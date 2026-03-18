@@ -430,11 +430,23 @@ function showHome() {
 }
 
 // ----- HOST SETUP -----
-function showHostSetup() {
+async function showHostSetup() {
   showScreen('screen-host-setup');
 
-  const savedKey = localStorage.getItem('fq_api_key');
-  if (savedKey) document.getElementById('api-key').value = savedKey;
+  // Load saved API key — try Firestore first, fall back to localStorage
+  await ensureAuth();
+  try {
+    const configSnap = await db.collection('config').doc('app').get();
+    if (configSnap.exists && configSnap.data().apiKey) {
+      document.getElementById('api-key').value = configSnap.data().apiKey;
+    } else {
+      const savedKey = localStorage.getItem('fq_api_key');
+      if (savedKey) document.getElementById('api-key').value = savedKey;
+    }
+  } catch {
+    const savedKey = localStorage.getItem('fq_api_key');
+    if (savedKey) document.getElementById('api-key').value = savedKey;
+  }
 
   // Difficulty slider live label
   const slider   = document.getElementById('difficulty');
@@ -454,7 +466,9 @@ function showHostSetup() {
     const timeQ      = parseInt(document.getElementById('time-per-q').value);
     const apiKey     = document.getElementById('api-key').value.trim();
     if (!hostName || !topic || !apiKey) return;
+    // Save to Firestore (shared across devices) and localStorage (offline fallback)
     localStorage.setItem('fq_api_key', apiKey);
+    db.collection('config').doc('app').set({ apiKey }, { merge: true }).catch(() => {});
     await startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey);
   };
 }
