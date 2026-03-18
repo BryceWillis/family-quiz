@@ -791,6 +791,12 @@ async function showResults(sessionData) {
   const correctText   = q.options[q.correct];
 
   document.getElementById('results-q-label').textContent = `Question ${qIdx + 1} of ${questions.length}`;
+
+  // Hide card until we know if the player got it right, to avoid a green→red flash
+  const card  = document.querySelector('.correct-answer-card');
+  const label = card.querySelector('.correct-label');
+  card.classList.add('loading');
+
   document.getElementById('correct-answer').innerHTML =
     `<span class="answer-badge">${correctLetter}</span>${correctText}`;
   document.getElementById('results-explanation').textContent = q.explanation || '';
@@ -800,8 +806,7 @@ async function showResults(sessionData) {
 
   const myPlayer    = players.find(p => p.id === state.userId);
   const iGotItRight = myPlayer && myPlayer.currentAnswer === q.correct;
-  const card        = document.querySelector('.correct-answer-card');
-  const label       = card.querySelector('.correct-label');
+  card.classList.remove('loading');
   if (iGotItRight) {
     card.classList.remove('wrong');
     label.textContent = '✅ Correct Answer';

@@ -531,6 +531,9 @@ h3 {
 .correct-answer-card.wrong {
   background: linear-gradient(135deg, #E53935, #B71C1C);
 }
+.correct-answer-card.loading {
+  background: linear-gradient(135deg, #546E7A, #37474F);
+}
 .correct-label { font-size: 0.9rem; opacity: 0.85; margin-bottom: 6px; }
 .correct-answer-text { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; }
 .answer-badge {
