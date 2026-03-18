@@ -668,7 +668,6 @@ h3 {
   inset: 0;
   background: rgba(0,0,0,0.55);
   z-index: 1000;
-  display: flex !important;
   align-items: center;
   justify-content: center;
   padding: 20px;

@@ -932,7 +932,7 @@ function showWhatsNew() {
       </ul>
     </div>
   `).join('');
-  modal.style.display = '';
+  modal.style.display = 'flex';
 }
 
 function closeWhatsNew(e) {
