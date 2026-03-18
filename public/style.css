@@ -640,3 +640,164 @@ h3 {
 @media (min-width: 600px) {
   .question-layout { padding-left: 40px; padding-right: 40px; }
 }
+
+/* ============================================================
+   WHAT'S NEW BUTTON + MODAL
+   ============================================================ */
+.whats-new-btn {
+  margin-top: 20px;
+  background: none;
+  border: 2px solid rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.85);
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.02em;
+}
+.whats-new-btn:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.8);
+  color: #fff;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 1000;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #eee;
+}
+.modal-header h2 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 8px;
+  line-height: 1;
+}
+.modal-close:hover { background: #f0f0f0; color: var(--text); }
+.modal-body {
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+}
+.version-block {
+  margin-bottom: 24px;
+}
+.version-block:last-child { margin-bottom: 0; }
+.version-label {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--purple);
+  margin-bottom: 2px;
+}
+.version-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.version-changes {
+  list-style: none;
+  padding: 0;
+}
+.version-changes li {
+  font-size: 0.9rem;
+  color: var(--text);
+  padding: 3px 0 3px 18px;
+  position: relative;
+}
+.version-changes li::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  color: var(--teal);
+  font-weight: bold;
+}
+
+/* ============================================================
+   RECENT SESSIONS PANEL
+   ============================================================ */
+.recent-sessions {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 400px;
+}
+.recent-sessions-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.recent-session-row {
+  background: rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 9px 14px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  backdrop-filter: blur(4px);
+}
+.rs-topic {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.rs-meta {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.8);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rs-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.rs-badge-lobby    { background: rgba(255,255,255,0.25); color: #fff; }
+.rs-badge-question { background: var(--green); color: #fff; }
+.rs-badge-results  { background: var(--orange); color: #fff; }
+.rs-badge-finished { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }

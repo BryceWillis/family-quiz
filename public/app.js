@@ -16,6 +16,70 @@ const ANIMALS = [
   'Salamander','Tapir','Binturong','Marmot','Alpaca',
 ];
 
+// ----- VERSION HISTORY -----
+const VERSIONS = [
+  {
+    version: '1.5',
+    label: 'v1.5 — Analytics',
+    date: 'March 2026',
+    changes: [
+      'Added Google Analytics via Firebase Analytics',
+      'Removed auto-playing text-to-speech — now manual only',
+    ],
+  },
+  {
+    version: '1.4',
+    label: 'v1.4 — Navigation Fix',
+    date: 'March 2026',
+    changes: [
+      'Fixed host getting stuck on scoreboard after clicking Next Question',
+      'Both host and players now navigate via real-time Firestore watchers',
+    ],
+  },
+  {
+    version: '1.3',
+    label: 'v1.3 — Read Aloud',
+    date: 'March 2026',
+    changes: [
+      'Added 🔊 Read Aloud button on question screen',
+      'Tap again to stop mid-read',
+      'Great for younger players who are still learning to read',
+    ],
+  },
+  {
+    version: '1.2',
+    label: 'v1.2 — Question Bank',
+    date: 'March 2026',
+    changes: [
+      'Questions are now cached locally so the AI is called less often',
+      'Unseen questions are always shown first',
+      'Oldest questions get recycled when the bank runs low',
+    ],
+  },
+  {
+    version: '1.1',
+    label: 'v1.1 — Difficulty Levels',
+    date: 'March 2026',
+    changes: [
+      'Added difficulty slider: Easy, Medium, Difficult, Impossible',
+      'Claude tailors question complexity to the chosen level',
+      'API key is now saved so you only type it once',
+    ],
+  },
+  {
+    version: '1.0',
+    label: 'v1.0 — Initial Release',
+    date: 'March 2026',
+    changes: [
+      'Real-time multiplayer quiz on any topic',
+      'Claude AI generates fresh questions for every game',
+      'Anonymous sign-in with silly animal names',
+      'Synchronized countdown timer across all devices',
+      'Live leaderboard after every question',
+    ],
+  },
+];
+
 // ----- DIFFICULTY -----
 const DIFFICULTY_LABELS = ['Easy', 'Medium', 'Difficult', 'Impossible'];
 // What we tell the AI for each level
@@ -351,6 +415,7 @@ function showHome() {
   state.sessionId = null;
   state.isHost    = false;
   showScreen('screen-home');
+  renderRecentSessions('recent-sessions-home');
 }
 
 // ----- HOST SETUP -----
@@ -772,6 +837,8 @@ async function showResults(sessionData) {
     else if (data.status === 'finished') { cleanup(); showFinal(); }
   });
   state.unsubscribers.push(unsub);
+
+  renderRecentSessions('recent-sessions-results');
 }
 
 // ----- FINAL -----
@@ -813,5 +880,65 @@ async function init() {
   else showHome();
 }
 
-window.App = { showHome, showHostSetup, showJoin };
+// ============================================================
+//  RECENT SESSIONS
+// ============================================================
+
+async function renderRecentSessions(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container || !db) return;
+  try {
+    const snap = await db.collection('sessions')
+      .orderBy('createdAt', 'desc')
+      .limit(5)
+      .get();
+    if (snap.empty) { container.innerHTML = ''; return; }
+    const rows = await Promise.all(snap.docs.map(async doc => {
+      const d = doc.data();
+      const pSnap = await doc.ref.collection('players').get();
+      return { id: doc.id, topic: d.topic, status: d.status,
+               qIdx: d.currentQuestionIndex, total: (d.questions || []).length,
+               players: pSnap.size };
+    }));
+    const statusLabel = s => s === 'lobby' ? 'In Lobby' : s === 'question' ? 'Active' :
+                              s === 'results' ? 'Results' : s === 'finished' ? 'Finished' : s;
+    container.innerHTML = `
+      <div class="recent-sessions-title">🕹️ Recent Games</div>
+      ${rows.map(r => `
+        <div class="recent-session-row">
+          <span class="rs-topic">${r.topic || '—'}</span>
+          <span class="rs-meta">
+            <span class="rs-badge rs-badge-${r.status}">${statusLabel(r.status)}</span>
+            Q${Math.max(r.qIdx + 1, 1)}/${r.total || '?'} &nbsp;·&nbsp; ${r.players} player${r.players !== 1 ? 's' : ''}
+          </span>
+        </div>`).join('')}
+    `;
+  } catch { container.innerHTML = ''; }
+}
+
+// ============================================================
+//  WHAT'S NEW MODAL
+// ============================================================
+
+function showWhatsNew() {
+  const modal = document.getElementById('whats-new-modal');
+  const content = document.getElementById('whats-new-content');
+  content.innerHTML = VERSIONS.map(v => `
+    <div class="version-block">
+      <div class="version-label">${v.label}</div>
+      <div class="version-date">${v.date}</div>
+      <ul class="version-changes">
+        ${v.changes.map(c => `<li>${c}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+  modal.style.display = '';
+}
+
+function closeWhatsNew(e) {
+  if (e && e.target !== document.getElementById('whats-new-modal') && !e.target.classList.contains('modal-close')) return;
+  document.getElementById('whats-new-modal').style.display = 'none';
+}
+
+window.App = { showHome, showHostSetup, showJoin, showWhatsNew, closeWhatsNew };
 document.addEventListener('DOMContentLoaded', () => init().catch(console.error));

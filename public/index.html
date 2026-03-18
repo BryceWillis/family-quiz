@@ -27,6 +27,19 @@
         <div class="or-divider"><span>or</span></div>
         <button class="btn btn-join" onclick="App.showJoin()">🙋 Join a Game</button>
       </div>
+      <button class="whats-new-btn" onclick="App.showWhatsNew()">✨ What's New</button>
+      <div id="recent-sessions-home" class="recent-sessions"></div>
+    </div>
+  </div>
+
+  <!-- ===== WHAT'S NEW MODAL ===== -->
+  <div id="whats-new-modal" class="modal-overlay" style="display:none" onclick="App.closeWhatsNew(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>✨ What's New</h2>
+        <button class="modal-close" onclick="App.closeWhatsNew()">✕</button>
+      </div>
+      <div id="whats-new-content" class="modal-body"></div>
     </div>
   </div>
 
@@ -199,6 +212,7 @@
       <div id="player-waiting-msg" class="waiting-pulse" style="display:none">
         ⏳ Waiting for host to continue…
       </div>
+      <div id="recent-sessions-results" class="recent-sessions"></div>
     </div>
   </div>
 
