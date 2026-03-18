@@ -1,89 +1,227 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Welcome to Firebase Hosting</title>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Quiz! 🎉</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="/__/firebase/12.10.0/firebase-app-compat.js"></script>
+  <script defer src="/__/firebase/12.10.0/firebase-auth-compat.js"></script>
+  <script defer src="/__/firebase/12.10.0/firebase-firestore-compat.js"></script>
+  <script defer src="/__/firebase/12.10.0/firebase-analytics-compat.js"></script>
+  <script defer src="/__/firebase/init.js?useEmulator=false"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
 
-    <!-- update the version number as needed -->
-    <script defer src="/__/firebase/12.10.0/firebase-app-compat.js"></script>
-    <!-- include only the Firebase features as you need -->
-    <script defer src="/__/firebase/12.10.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-database-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-functions-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-messaging-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-storage-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-analytics-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-remote-config-compat.js"></script>
-    <script defer src="/__/firebase/12.10.0/firebase-performance-compat.js"></script>
-    <!-- 
-      initialize the SDK after all desired features are loaded, set useEmulator to false
-      to avoid connecting the SDK to running emulators.
-    -->
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-
-    <style media="screen">
-      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
-      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
-      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
-      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
-      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
-      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
-      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
-      @media (max-width: 600px) {
-        body, #message { margin-top: 0; background: white; box-shadow: none; }
-        body { border-top: 16px solid #ffa100; }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="message">
-      <h2>Welcome</h2>
-      <h1>Firebase Hosting Setup Complete</h1>
-      <p>You're seeing this because you've successfully setup Firebase Hosting. Now it's time to go build something extraordinary!</p>
-      <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
+  <!-- ===== HOME ===== -->
+  <div id="screen-home" class="screen active">
+    <div class="screen-inner center">
+      <div class="logo">
+        <div class="logo-icon">🎉</div>
+        <h1>Family Quiz!</h1>
+        <p class="tagline">Fun for everyone — even the little ones!</p>
+      </div>
+      <div class="home-actions">
+        <button class="btn btn-host" onclick="App.showHostSetup()">🎮 Host a Game</button>
+        <div class="or-divider"><span>or</span></div>
+        <button class="btn btn-join" onclick="App.showJoin()">🙋 Join a Game</button>
+      </div>
     </div>
-    <p id="load">Firebase SDK Loading&hellip;</p>
+  </div>
 
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        const loadEl = document.querySelector('#load');
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-        // // The Firebase SDK is initialized and available here!
-        //
-        // firebase.auth().onAuthStateChanged(user => { });
-        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
-        // firebase.firestore().doc('/foo/bar').get().then(() => { });
-        // firebase.functions().httpsCallable('yourFunction')().then(() => { });
-        // firebase.messaging().requestPermission().then(() => { });
-        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
-        // firebase.analytics(); // call to activate
-        // firebase.analytics().logEvent('tutorial_completed');
-        // firebase.performance(); // call to activate
-        //
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+  <!-- ===== HOST SETUP ===== -->
+  <div id="screen-host-setup" class="screen">
+    <div class="screen-inner">
+      <button class="back-btn" onclick="App.showHome()">← Back</button>
+      <h2>🎮 Host a Game</h2>
+      <form id="host-setup-form" class="setup-form">
+        <label>Your name
+          <input type="text" id="host-name" placeholder="e.g. Dad, Mum, Grandma" required maxlength="30">
+        </label>
+        <label>Quiz topic
+          <input type="text" id="topic" placeholder="e.g. Animals, Disney movies, Space" required maxlength="60">
+          <small>Claude will generate age-appropriate questions on this topic!</small>
+        </label>
+        <label>Difficulty
+          <div class="diff-wrap">
+            <input type="range" id="difficulty" min="0" max="3" value="0" step="1" class="diff-slider">
+            <div class="diff-labels">
+              <span>Easy</span><span>Medium</span><span>Difficult</span><span>Impossible</span>
+            </div>
+            <div id="diff-display" class="diff-display">Easy</div>
+          </div>
+        </label>
+        <div class="form-row">
+          <label>Questions
+            <select id="num-questions">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="15">15</option>
+            </select>
+          </label>
+          <label>Time per question
+            <select id="time-per-q">
+              <option value="20">20 sec</option>
+              <option value="30" selected>30 sec</option>
+              <option value="45">45 sec</option>
+              <option value="60">60 sec</option>
+            </select>
+          </label>
+        </div>
+        <label>Claude API Key
+          <input type="password" id="api-key" placeholder="sk-ant-..." required>
+          <small>Used directly from your browser. Not stored anywhere.</small>
+        </label>
+        <button type="submit" class="btn btn-host">✨ Generate Questions &amp; Create Game</button>
+      </form>
+    </div>
+  </div>
 
-        try {
-          let app = firebase.app();
-          let features = [
-            'auth', 
-            'database', 
-            'firestore',
-            'functions',
-            'messaging', 
-            'storage', 
-            'analytics', 
-            'remoteConfig',
-            'performance',
-          ].filter(feature => typeof app[feature] === 'function');
-          loadEl.textContent = `Firebase SDK loaded with ${features.join(', ')}`;
-        } catch (e) {
-          console.error(e);
-          loadEl.textContent = 'Error loading the Firebase SDK, check the console.';
-        }
-      });
-    </script>
-  </body>
+  <!-- ===== GENERATING ===== -->
+  <div id="screen-generating" class="screen">
+    <div class="screen-inner center">
+      <div class="spinner">🤖</div>
+      <h2>Generating Questions…</h2>
+      <p id="generating-topic" class="generating-topic"></p>
+      <p class="generating-hint">Claude is creating fun questions just for you!</p>
+    </div>
+  </div>
+
+  <!-- ===== LOBBY (HOST) ===== -->
+  <div id="screen-lobby-host" class="screen">
+    <div class="screen-inner">
+      <h2>🎮 Your Game Lobby</h2>
+      <div class="code-card">
+        <p class="code-label">Game Code</p>
+        <div id="game-code-display" class="game-code">----</div>
+        <p class="code-hint">Tell everyone to go to this page and enter this code!</p>
+      </div>
+      <div class="share-row">
+        <input type="text" id="share-link" readonly class="share-input">
+        <button id="copy-link-btn" class="btn btn-small">📋 Copy Link</button>
+      </div>
+      <div class="players-section">
+        <h3>Players waiting: <span id="player-count">1</span></h3>
+        <div id="host-lobby-players" class="player-chips"></div>
+      </div>
+      <button id="start-btn" class="btn btn-host start-btn" disabled>
+        🚀 Start Game!
+      </button>
+      <p class="start-hint">Need at least 2 players to start</p>
+    </div>
+  </div>
+
+  <!-- ===== JOIN ===== -->
+  <div id="screen-join" class="screen">
+    <div class="screen-inner">
+      <button class="back-btn" onclick="App.showHome()">← Back</button>
+      <h2>🙋 Join a Game</h2>
+      <form id="join-form" class="setup-form">
+        <label>Your name
+          <input type="text" id="player-name" placeholder="e.g. Emma, Jack" required maxlength="30">
+        </label>
+        <label>Game Code
+          <input type="text" id="join-code" placeholder="e.g. ABCD" required maxlength="4"
+            style="text-transform:uppercase;letter-spacing:0.2em;font-size:1.5rem;text-align:center">
+        </label>
+        <button type="submit" class="btn btn-join">🎯 Join Game!</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== LOBBY (PLAYER) ===== -->
+  <div id="screen-lobby-player" class="screen">
+    <div class="screen-inner center">
+      <h2>You joined!</h2>
+      <div class="silly-name-card">
+        <p class="silly-label">You are…</p>
+        <div id="my-silly-name" class="silly-name"></div>
+        <p class="silly-hint">Remember your name — that's you on the scoreboard!</p>
+      </div>
+      <div class="waiting-pulse">⏳ Waiting for the host to start…</div>
+      <div class="players-section">
+        <h3>In the lobby:</h3>
+        <div id="player-lobby-list" class="player-chips"></div>
+      </div>
+      <p class="code-small">Game code: <strong id="player-game-code"></strong></p>
+    </div>
+  </div>
+
+  <!-- ===== QUESTION ===== -->
+  <div id="screen-question" class="screen">
+    <div class="screen-inner question-layout">
+      <div class="question-header">
+        <span id="q-progress" class="q-progress">Question 1 / 10</span>
+        <div class="timer-bar">
+          <div id="timer-fill" class="timer-fill green"></div>
+        </div>
+        <span id="timer-seconds" class="timer-seconds">30</span>
+      </div>
+      <div class="question-card">
+        <p id="q-text" class="q-text"></p>
+      </div>
+      <div id="answer-options" class="answer-options"></div>
+      <div id="waiting-indicator" class="waiting-indicator" style="display:none">
+        ⏳ Waiting for everyone else…
+      </div>
+      <div class="question-footer">
+        <button id="tts-repeat-btn" class="btn btn-tts">
+          🔊 Read Aloud
+        </button>
+        <div id="host-q-panel" class="host-panel" style="display:none">
+          <button id="skip-btn" class="btn btn-small btn-skip">⏩ Skip Round</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ROUND RESULTS ===== -->
+  <div id="screen-round-results" class="screen">
+    <div class="screen-inner">
+      <h2 id="results-q-label">Question 1 Results</h2>
+      <div class="correct-answer-card">
+        <p class="correct-label">✅ Correct Answer</p>
+        <div id="correct-answer" class="correct-answer-text"></div>
+        <p id="results-explanation" class="results-explanation"></p>
+      </div>
+      <div class="got-it-section">
+        <h3>🎉 Got it right:</h3>
+        <div id="who-got-it" class="got-it-chips"></div>
+      </div>
+      <div class="leaderboard-section">
+        <h3>🏆 Scores so far:</h3>
+        <div id="results-leaderboard" class="leaderboard"></div>
+      </div>
+      <div id="host-results-panel" class="host-panel" style="display:none">
+        <button id="next-btn" class="btn btn-host">▶️ Next Question</button>
+      </div>
+      <div id="player-waiting-msg" class="waiting-pulse" style="display:none">
+        ⏳ Waiting for host to continue…
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FINAL RESULTS ===== -->
+  <div id="screen-final" class="screen">
+    <div class="screen-inner center">
+      <div class="confetti-header">🎊🎉🏆🎉🎊</div>
+      <h2>Game Over!</h2>
+      <div class="winner-card">
+        <p class="winner-label">🥇 Winner!</p>
+        <div id="winner-name" class="winner-name"></div>
+        <div id="winner-score" class="winner-score"></div>
+      </div>
+      <div class="leaderboard-section">
+        <h3>Final Scores</h3>
+        <div id="final-leaderboard" class="leaderboard"></div>
+      </div>
+      <div class="final-actions">
+        <button id="play-again-btn" class="btn btn-host" style="display:none">🔄 Play Again</button>
+        <button id="home-btn" class="btn btn-secondary">🏠 Home</button>
+      </div>
+    </div>
+  </div>
+
+</body>
 </html>
