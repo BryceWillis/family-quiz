@@ -19,6 +19,17 @@ const ANIMALS = [
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.6',
+    label: 'v1.6 — Your Name, Your Way',
+    date: 'March 2026',
+    changes: [
+      'Players now use their entered name throughout the game — no more hidden silly names',
+      'Added 🎲 button on the join screen to fill in a random silly name if you want one',
+      'Wrong answer card now shows in red so you know immediately you got it wrong',
+      'Correct answer card stays green when you got it right',
+    ],
+  },
+  {
     version: '1.5',
     label: 'v1.5 — Analytics',
     date: 'March 2026',
@@ -387,7 +398,7 @@ function renderPlayerChips(containerId, players) {
   if (!el) return;
   el.innerHTML = players.map(p =>
     `<div class="player-chip ${p.id === state.userId ? 'me' : ''}">
-      ${p.sillyName}${p.id === state.userId ? ' <em>(you)</em>' : ''}
+      ${p.displayName}${p.id === state.userId ? ' <em>(you)</em>' : ''}
     </div>`
   ).join('');
 }
@@ -399,7 +410,7 @@ function renderLeaderboard(containerId, players) {
   el.innerHTML = players.map((p, i) =>
     `<div class="lb-row ${p.id === state.userId ? 'lb-me' : ''}">
       <span class="lb-rank">${medals[i] ?? `${i + 1}.`}</span>
-      <span class="lb-name">${p.sillyName}${p.id === state.userId ? ' ✨' : ''}</span>
+      <span class="lb-name">${p.displayName}${p.id === state.userId ? ' ✨' : ''}</span>
       <span class="lb-score">${p.score} pts</span>
     </div>`
   ).join('');
@@ -480,9 +491,9 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey)
       if (!existing.exists) break;
     }
 
-    state.sillyName = generateSillyName();
-    state.sessionId = code;
-    state.isHost    = true;
+    state.displayName = hostName;
+    state.sessionId   = code;
+    state.isHost      = true;
 
     await db.collection('sessions').doc(code).set({
       hostId:               state.userId,
@@ -499,7 +510,6 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey)
 
     await db.collection('sessions').doc(code)
       .collection('players').doc(state.userId).set({
-        sillyName:               state.sillyName,
         displayName:             hostName,
         score:                   0,
         answeredCurrentQuestion: false,
@@ -574,6 +584,10 @@ function showJoin() {
   const code = new URLSearchParams(location.search).get('code');
   if (code) document.getElementById('join-code').value = code.toUpperCase();
 
+  document.getElementById('silly-name-btn').onclick = () => {
+    document.getElementById('player-name').value = generateSillyName();
+  };
+
   document.getElementById('join-form').onsubmit = async e => {
     e.preventDefault();
     const name = document.getElementById('player-name').value.trim();
@@ -592,12 +606,12 @@ async function joinGame(playerName, code) {
     const session = snap.data();
     if (session.status !== 'lobby') { showError('This game has already started!'); return; }
 
-    state.sillyName = generateSillyName();
-    state.sessionId = code;
-    state.isHost    = false;
+    state.displayName = playerName;
+    state.sessionId   = code;
+    state.isHost      = false;
 
     await sessionRef.collection('players').doc(state.userId).set({
-      sillyName: state.sillyName, displayName: playerName,
+      displayName: playerName,
       score: 0, answeredCurrentQuestion: false,
       currentAnswer: -1, lastAnswerCorrect: null,
       joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -611,7 +625,7 @@ async function joinGame(playerName, code) {
 function showLobbyPlayer() {
   cleanup();
   showScreen('screen-lobby-player');
-  document.getElementById('my-silly-name').textContent    = state.sillyName;
+  document.getElementById('my-silly-name').textContent    = state.displayName;
   document.getElementById('player-game-code').textContent = state.sessionId;
 
   const sessionRef = db.collection('sessions').doc(state.sessionId);
@@ -784,10 +798,22 @@ async function showResults(sessionData) {
   const pSnap   = await db.collection('sessions').doc(state.sessionId).collection('players').get();
   const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.score - a.score);
 
+  const myPlayer    = players.find(p => p.id === state.userId);
+  const iGotItRight = myPlayer && myPlayer.currentAnswer === q.correct;
+  const card        = document.querySelector('.correct-answer-card');
+  const label       = card.querySelector('.correct-label');
+  if (iGotItRight) {
+    card.classList.remove('wrong');
+    label.textContent = '✅ Correct Answer';
+  } else {
+    card.classList.add('wrong');
+    label.textContent = '❌ You got this wrong — correct answer was:';
+  }
+
   const correct = players.filter(p => p.currentAnswer === q.correct);
   document.getElementById('who-got-it').innerHTML = correct.length === 0
     ? '<p class="no-one">Nobody got this one — tricky!</p>'
-    : correct.map(p => `<div class="got-it-chip">✅ ${p.sillyName}</div>`).join('');
+    : correct.map(p => `<div class="got-it-chip">✅ ${p.displayName}</div>`).join('');
 
   renderLeaderboard('results-leaderboard', players);
 
@@ -850,7 +876,7 @@ async function showFinal() {
   const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.score - a.score);
   const winner  = players[0];
 
-  document.getElementById('winner-name').textContent  = winner?.sillyName ?? '???';
+  document.getElementById('winner-name').textContent  = winner?.displayName ?? '???';
   document.getElementById('winner-score').textContent = `${winner?.score ?? 0} points`;
   renderLeaderboard('final-leaderboard', players);
 

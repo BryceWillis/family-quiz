@@ -212,6 +212,27 @@ h3 {
   border-color: var(--purple);
 }
 
+.name-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.name-input-row input {
+  flex: 1;
+}
+.btn-silly {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--teal), #35b2a8);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0 16px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-silly:hover { opacity: 0.85; }
+
 .setup-form small {
   color: var(--text-muted);
   font-size: 0.8rem;
@@ -505,6 +526,10 @@ h3 {
   color: white;
   margin-bottom: 20px;
   box-shadow: var(--shadow);
+  transition: background 0.3s;
+}
+.correct-answer-card.wrong {
+  background: linear-gradient(135deg, #E53935, #B71C1C);
 }
 .correct-label { font-size: 0.9rem; opacity: 0.85; margin-bottom: 6px; }
 .correct-answer-text { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; }

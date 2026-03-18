@@ -4,6 +4,12 @@ All notable changes to Family Quiz are documented here.
 
 ---
 
+## v1.6 — March 2026
+
+- Players now use their entered name throughout the game
+- Added 🎲 button on the join screen to fill in a random silly name
+- Wrong answer card now shows in red; correct answer stays green
+
 ## v1.5 — March 2026
 
 - Added Google Analytics via Firebase Analytics

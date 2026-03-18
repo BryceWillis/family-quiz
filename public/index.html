@@ -140,7 +140,10 @@
       <h2>🙋 Join a Game</h2>
       <form id="join-form" class="setup-form">
         <label>Your name
-          <input type="text" id="player-name" placeholder="e.g. Emma, Jack" required maxlength="30">
+          <div class="name-input-row">
+            <input type="text" id="player-name" placeholder="e.g. Emma, Jack" required maxlength="30">
+            <button type="button" id="silly-name-btn" class="btn btn-silly" title="Pick a random silly name">🎲</button>
+          </div>
         </label>
         <label>Game Code
           <input type="text" id="join-code" placeholder="e.g. ABCD" required maxlength="4"
