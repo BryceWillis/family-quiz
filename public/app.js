@@ -93,13 +93,6 @@ const VERSIONS = [
 
 // ----- DIFFICULTY -----
 const DIFFICULTY_LABELS = ['Easy', 'Medium', 'Difficult', 'Impossible'];
-// What we tell the AI for each level
-const DIFFICULTY_PROMPTS = [
-  'easy — very straightforward, suitable for ages 6 and up, obvious answers',
-  'normal — some general knowledge needed, accessible to most people',
-  'challenging — requires solid knowledge, will stump many adults',
-  'difficult — obscure and expert-level, will challenge even well-read adults',
-];
 
 // ----- STATE -----
 const state = {
@@ -333,60 +326,13 @@ async function ensureAuth() {
 }
 
 // ============================================================
-//  CLAUDE API — question generation
+//  CLAUDE API — question generation (via Cloud Function)
 // ============================================================
 
-async function generateQuestions(topic, count, difficulty, apiKey) {
-  const diffPrompt = DIFFICULTY_PROMPTS[difficulty] ?? DIFFICULTY_PROMPTS[0];
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type':                              'application/json',
-      'x-api-key':                                 apiKey,
-      'anthropic-version':                         '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model:      'claude-opus-4-6',
-      max_tokens: 2048,
-      messages: [{
-        role:    'user',
-        content: `Create ${count} multiple-choice quiz questions about "${topic}".
-
-Difficulty level: ${diffPrompt}
-
-Requirements:
-- 4 answer choices per question
-- One clearly correct answer
-- Brief, cheerful explanation for why the answer is correct (1-2 sentences)
-- Match the difficulty level precisely — don't make hard questions easy or vice versa
-
-Return ONLY a valid JSON array — no markdown, no explanation, just the JSON:
-[
-  {
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "correct": 0,
-    "explanation": "..."
-  }
-]
-
-The "correct" field is the 0-based index (0=first option, 1=second, 2=third, 3=fourth).`,
-      }],
-    }),
-  });
-
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { const err = await res.json(); msg = err.error?.message || msg; } catch {}
-    throw new Error(msg);
-  }
-
-  const data = await res.json();
-  let text = data.content[0].text.trim();
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-  return JSON.parse(text);
+async function generateQuestions(topic, count, difficulty) {
+  const fn     = firebase.app().functions('us-east1').httpsCallable('generateQuestions');
+  const result = await fn({ topic, count, difficulty });
+  return result.data.questions;
 }
 
 // ============================================================
@@ -430,27 +376,12 @@ function showHome() {
 }
 
 // ----- HOST SETUP -----
-async function showHostSetup() {
+function showHostSetup() {
   showScreen('screen-host-setup');
 
-  // Load saved API key — try Firestore first, fall back to localStorage
-  await ensureAuth();
-  try {
-    const configSnap = await db.collection('config').doc('app').get();
-    if (configSnap.exists && configSnap.data().apiKey) {
-      document.getElementById('api-key').value = configSnap.data().apiKey;
-    } else {
-      const savedKey = localStorage.getItem('fq_api_key');
-      if (savedKey) document.getElementById('api-key').value = savedKey;
-    }
-  } catch {
-    const savedKey = localStorage.getItem('fq_api_key');
-    if (savedKey) document.getElementById('api-key').value = savedKey;
-  }
-
   // Difficulty slider live label
-  const slider   = document.getElementById('difficulty');
-  const display  = document.getElementById('diff-display');
+  const slider  = document.getElementById('difficulty');
+  const display = document.getElementById('diff-display');
   const updateDiffLabel = () => {
     display.textContent = DIFFICULTY_LABELS[parseInt(slider.value)];
   };
@@ -464,16 +395,12 @@ async function showHostSetup() {
     const difficulty = parseInt(document.getElementById('difficulty').value);
     const numQ       = parseInt(document.getElementById('num-questions').value);
     const timeQ      = parseInt(document.getElementById('time-per-q').value);
-    const apiKey     = document.getElementById('api-key').value.trim();
-    if (!hostName || !topic || !apiKey) return;
-    // Save to Firestore (shared across devices) and localStorage (offline fallback)
-    localStorage.setItem('fq_api_key', apiKey);
-    db.collection('config').doc('app').set({ apiKey }, { merge: true }).catch(() => {});
-    await startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey);
+    if (!hostName || !topic) return;
+    await startCreateGame(hostName, topic, difficulty, numQ, timeQ);
   };
 }
 
-async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey) {
+async function startCreateGame(hostName, topic, difficulty, numQ, timeQ) {
   showScreen('screen-generating');
   document.getElementById('generating-topic').textContent =
     `"${topic}" — ${DIFFICULTY_LABELS[difficulty]}`;
@@ -488,7 +415,7 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, apiKey)
     if (fromBank < numQ) {
       // Need to generate more — ask AI for the full count (extra go into bank for later)
       const needed = numQ - fromBank;
-      const generated = await generateQuestions(topic, needed + 5, difficulty, apiKey);
+      const generated = await generateQuestions(topic, needed + 5, difficulty);
       QuestionBank.add(topic, difficulty, generated);
       // Re-fetch so selection logic applies to the full pool
       questions = QuestionBank.get(topic, difficulty, numQ);
