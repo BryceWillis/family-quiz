@@ -19,6 +19,17 @@ const ANIMALS = [
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.7',
+    label: 'v1.7 — More Ways to Play',
+    date: 'March 2026',
+    changes: [
+      '"No Timer" option — take as long as you need, great for younger kids',
+      'Speed scoring mode — answer faster to earn more points (up to 1000!)',
+      'Fixed dice button sizing in the join form',
+      'Fixed What\'s New modal header text colour',
+    ],
+  },
+  {
     version: '1.6',
     label: 'v1.6 — Your Name, Your Way',
     date: 'March 2026',
@@ -388,19 +399,33 @@ function showHostSetup() {
   slider.oninput = updateDiffLabel;
   updateDiffLabel();
 
+  // Speed scoring requires a timer — disable it when "No Timer" is selected
+  const timeSelect    = document.getElementById('time-per-q');
+  const scoringSelect = document.getElementById('scoring-mode');
+  const scoringHint   = document.getElementById('scoring-hint');
+  const updateScoringAvailability = () => {
+    const noTimer = parseInt(timeSelect.value) === 0;
+    scoringSelect.disabled    = noTimer;
+    scoringHint.style.display = noTimer ? 'block' : 'none';
+    if (noTimer) scoringSelect.value = 'flat';
+  };
+  timeSelect.onchange = updateScoringAvailability;
+  updateScoringAvailability();
+
   document.getElementById('host-setup-form').onsubmit = async e => {
     e.preventDefault();
-    const hostName   = document.getElementById('host-name').value.trim();
-    const topic      = document.getElementById('topic').value.trim();
-    const difficulty = parseInt(document.getElementById('difficulty').value);
-    const numQ       = parseInt(document.getElementById('num-questions').value);
-    const timeQ      = parseInt(document.getElementById('time-per-q').value);
+    const hostName    = document.getElementById('host-name').value.trim();
+    const topic       = document.getElementById('topic').value.trim();
+    const difficulty  = parseInt(document.getElementById('difficulty').value);
+    const numQ        = parseInt(document.getElementById('num-questions').value);
+    const timeQ       = parseInt(document.getElementById('time-per-q').value);
+    const scoringMode = document.getElementById('scoring-mode').value;
     if (!hostName || !topic) return;
-    await startCreateGame(hostName, topic, difficulty, numQ, timeQ);
+    await startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoringMode);
   };
 }
 
-async function startCreateGame(hostName, topic, difficulty, numQ, timeQ) {
+async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoringMode) {
   showScreen('screen-generating');
   document.getElementById('generating-topic').textContent =
     `"${topic}" — ${DIFFICULTY_LABELS[difficulty]}`;
@@ -445,6 +470,7 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ) {
       difficulty,
       questions,
       timePerQuestion:      timeQ,
+      scoringMode:          scoringMode || 'flat',
       questionStartTime:    null,
       createdAt:            firebase.firestore.FieldValue.serverTimestamp(),
     });
@@ -615,7 +641,11 @@ function showQuestion(sessionData) {
       document.getElementById('waiting-indicator').style.display = 'flex';
       await db.collection('sessions').doc(state.sessionId)
         .collection('players').doc(state.userId)
-        .update({ currentAnswer: i, answeredCurrentQuestion: true });
+        .update({
+          currentAnswer: i,
+          answeredCurrentQuestion: true,
+          answeredAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
     };
     optionsEl.appendChild(btn);
   });
@@ -666,6 +696,14 @@ function startTimer(duration, startTime, qIdx) {
   const fill   = document.getElementById('timer-fill');
   const secsEl = document.getElementById('timer-seconds');
 
+  // No-timer mode: show infinity, don't auto-advance
+  if (duration === 0) {
+    fill.style.width = '100%';
+    fill.className   = 'timer-fill green';
+    secsEl.textContent = '∞';
+    return;
+  }
+
   let startMs;
   if (startTime && typeof startTime.toMillis === 'function') {
     startMs = startTime.toMillis();
@@ -702,15 +740,37 @@ async function endQuestion(qIdx) {
     state.endingQuestion = false; return;
   }
 
-  const correctIdx = session.questions[qIdx].correct;
+  const correctIdx    = session.questions[qIdx].correct;
+  const scoringMode   = session.scoringMode || 'flat';
+  const timePerQ      = session.timePerQuestion;
+  const startTime     = session.questionStartTime;
+  const startMs       = startTime
+    ? (typeof startTime.toMillis === 'function'
+        ? startTime.toMillis()
+        : startTime.seconds * 1000 + Math.floor((startTime.nanoseconds || 0) / 1e6))
+    : 0;
+
   const pSnap = await sessionRef.collection('players').get();
   const batch = db.batch();
   pSnap.docs.forEach(doc => {
     const p         = doc.data();
     const isCorrect = p.currentAnswer === correctIdx;
+    let points = 0;
+    if (isCorrect) {
+      if (scoringMode === 'speed' && timePerQ > 0 && p.answeredAt) {
+        const answeredMs = typeof p.answeredAt.toMillis === 'function'
+          ? p.answeredAt.toMillis()
+          : p.answeredAt.seconds * 1000 + Math.floor((p.answeredAt.nanoseconds || 0) / 1e6);
+        const elapsed = Math.max(0, (answeredMs - startMs) / 1000);
+        // 1000 pts for instant answer → 100 pts for answering right at the buzzer
+        points = Math.round(100 + 900 * Math.max(0, 1 - elapsed / timePerQ));
+      } else {
+        points = 100;
+      }
+    }
     batch.update(doc.ref, {
       lastAnswerCorrect: isCorrect,
-      score: firebase.firestore.FieldValue.increment(isCorrect ? 100 : 0),
+      score: firebase.firestore.FieldValue.increment(points),
     });
   });
   await batch.commit();

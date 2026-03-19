@@ -223,15 +223,22 @@ h3 {
 .btn-silly {
   flex: 0 0 48px;
   width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, var(--teal), #35b2a8);
   color: white;
   border: none;
   border-radius: 10px;
   font-size: 1.2rem;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, transform 0.1s;
+  flex-shrink: 0;
+  padding: 0;
 }
 .btn-silly:hover { opacity: 0.85; }
+.btn-silly:active { transform: scale(0.97); }
 
 .setup-form small {
   color: var(--text-muted);
@@ -721,6 +728,8 @@ h3 {
 .modal-header h2 {
   font-size: 1.3rem;
   margin: 0;
+  color: var(--text);
+  text-shadow: none;
 }
 .modal-close {
   background: none;
