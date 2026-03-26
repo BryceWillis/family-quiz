@@ -41,7 +41,7 @@ ctx.font = 'bold 88px "Segoe UI", "Arial", sans-serif';
 ctx.fillStyle = 'white';
 ctx.shadowColor = 'rgba(0,0,0,0.25)';
 ctx.shadowBlur = 12;
-ctx.fillText('Family Quiz!', W / 2, 392);
+ctx.fillText('Showdown Live!', W / 2, 392);
 ctx.shadowBlur = 0;
 
 // --- Tagline ---
@@ -69,7 +69,49 @@ ctx.font = '600 26px "Segoe UI", "Arial", sans-serif';
 ctx.fillStyle = 'rgba(255,255,255,0.92)';
 ctx.fillText('AI questions · Live scores · Fun for all ages', W / 2, 530);
 
-// --- Save ---
+// --- Save OG image ---
 const out = path.join(__dirname, '..', 'public', 'og-image.png');
 fs.writeFileSync(out, canvas.toBuffer('image/png'));
 console.log(`Saved ${out} (${(fs.statSync(out).size / 1024).toFixed(1)} KB)`);
+
+// ============================================================
+//  Apple Touch Icon  (180 × 180)
+// ============================================================
+
+const IC = 180;
+const icon = createCanvas(IC, IC);
+const ic   = icon.getContext('2d');
+
+// Background gradient
+const icGrad = ic.createLinearGradient(0, 0, IC, IC);
+icGrad.addColorStop(0, '#667eea');
+icGrad.addColorStop(1, '#764ba2');
+ic.fillStyle = icGrad;
+ic.roundRect(0, 0, IC, IC, 28);
+ic.fill();
+
+// Soft decorative circle
+ic.beginPath();
+ic.arc(IC * 0.85, IC * 0.15, 52, 0, Math.PI * 2);
+ic.fillStyle = 'rgba(255,255,255,0.08)';
+ic.fill();
+
+// Emoji
+ic.font = '90px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+ic.textAlign = 'center';
+ic.textBaseline = 'middle';
+ic.fillStyle = 'white';
+ic.fillText('🎉', IC / 2, IC / 2 - 8);
+
+// Label
+ic.font = 'bold 22px "Segoe UI", Arial, sans-serif';
+ic.textBaseline = 'alphabetic';
+ic.fillStyle = 'rgba(255,255,255,0.90)';
+ic.shadowColor = 'rgba(0,0,0,0.25)';
+ic.shadowBlur   = 4;
+ic.fillText('Showdown Live', IC / 2, IC - 18);
+ic.shadowBlur = 0;
+
+const iconOut = path.join(__dirname, '..', 'public', 'apple-touch-icon.png');
+fs.writeFileSync(iconOut, icon.toBuffer('image/png'));
+console.log(`Saved ${iconOut} (${(fs.statSync(iconOut).size / 1024).toFixed(1)} KB)`);

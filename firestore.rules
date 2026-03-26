@@ -3,19 +3,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Sessions: any signed-in (including anonymous) user can read/write.
-    // All players sign in anonymously via Firebase Auth before accessing data.
+    // Sessions: host has full write control; any authenticated user can read.
+    // Players join by creating their own sub-doc; the host controls the rest.
     match /sessions/{sessionId} {
-      allow read, write: if request.auth != null;
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.hostId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.hostId == request.auth.uid;
+      allow delete: if false;
 
       match /players/{playerId} {
-        allow read, write: if request.auth != null;
+        allow read:   if request.auth != null;
+
+        // Each player may only create their own doc.
+        allow create: if request.auth != null && request.auth.uid == playerId;
+
+        // The host can update any player doc (score writes, state resets).
+        // A player can update only their own doc, and only the answer-submission
+        // fields — never score or lastAnswerCorrect.
+        allow update: if request.auth != null && (
+          get(/databases/$(database)/documents/sessions/$(sessionId)).data.hostId
+            == request.auth.uid
+          ||
+          (request.auth.uid == playerId
+            && !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['score', 'lastAnswerCorrect']))
+        );
+
+        allow delete: if false;
       }
     }
 
-    // Shared app config (e.g. stored API key) — authenticated users only.
+    // Shared app config — read-only for clients; writes only via admin SDK.
     match /config/{docId} {
-      allow read, write: if request.auth != null;
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
+    // Question bank — read-only for clients; all writes via Cloud Functions
+    // (admin SDK) so clients cannot inject or corrupt shared questions.
+    match /questionBank/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
+    // Flagged question reports — clients can submit and read; no delete.
+    match /flaggedQuestions/{docId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null;
     }
   }
 }

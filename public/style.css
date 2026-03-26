@@ -175,6 +175,14 @@ h3 {
   font-size: 0.9rem;
 }
 
+.btn-end {
+  background: rgba(244,67,54,0.18);
+  color: rgba(255,200,195,1);
+  border: 2px solid rgba(244,67,54,0.5);
+  font-size: 0.9rem;
+}
+.btn-end:hover { background: rgba(244,67,54,0.32); border-color: rgba(244,67,54,0.8); }
+
 /* ============================================================
    FORMS
    ============================================================ */
@@ -282,9 +290,33 @@ h3 {
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--yellow);
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
-.generating-hint { color: rgba(255,255,255,0.75); font-size: 1rem; }
+.generating-status {
+  color: rgba(255,255,255,0.78);
+  font-size: 0.95rem;
+  font-style: italic;
+  min-height: 1.5em;
+  transition: opacity 0.35s ease;
+}
+
+.banned-card {
+  max-width: 300px;
+  text-align: center;
+  padding: 36px 32px 28px;
+  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+.banned-emoji { font-size: 3rem; line-height: 1; }
+.banned-text {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+  margin: 4px 0 8px;
+}
 
 /* ============================================================
    GAME CODE
@@ -569,7 +601,40 @@ h3 {
   font-size: 0.9rem;
   font-weight: 600;
 }
+.got-it-chip.correct {
+  background: rgba(56, 176, 102, 0.35);
+  border-color: #38b066;
+}
+.got-it-chip.wrong {
+  background: rgba(220, 53, 69, 0.3);
+  border-color: rgba(220, 53, 69, 0.7);
+}
+.got-it-chip.me {
+  outline: 3px solid white;
+  outline-offset: 2px;
+}
 .no-one { color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.95rem; }
+
+/* All-correct / all-wrong reaction banner */
+.reaction-banner {
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  letter-spacing: 0.01em;
+}
+.reaction-banner.all-correct {
+  background: rgba(56, 176, 102, 0.25);
+  border: 2px solid #38b066;
+  color: #d4f5e5;
+}
+.reaction-banner.all-wrong {
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.9);
+}
 
 /* ============================================================
    LEADERBOARD
@@ -658,6 +723,29 @@ h3 {
 .btn-tts-stop {
   background: linear-gradient(135deg, #f44336, #c62828) !important;
   color: white !important;
+}
+
+/* ============================================================
+   QUESTION FEEDBACK
+   ============================================================ */
+.feedback-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.btn-skip.voted-up {
+  background: rgba(76, 175, 80, 0.45);
+  border-color: rgba(76, 175, 80, 0.9);
+}
+.btn-skip.voted-down {
+  background: rgba(244, 67, 54, 0.45);
+  border-color: rgba(244, 67, 54, 0.9);
+}
+
+/* TTS reading highlight — applied to .question-card and .option-btn while being read */
+.tts-reading {
+  outline: 4px solid #FFE66D !important;
+  box-shadow: 0 0 0 8px rgba(255, 230, 109, 0.25) !important;
 }
 
 /* ============================================================
@@ -833,7 +921,9 @@ h3 {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.rs-badge-lobby    { background: rgba(255,255,255,0.25); color: #fff; }
-.rs-badge-question { background: var(--green); color: #fff; }
-.rs-badge-results  { background: var(--orange); color: #fff; }
-.rs-badge-finished { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
+.rs-badge-lobby        { background: rgba(255,255,255,0.25); color: #fff; }
+.rs-badge-question     { background: var(--green); color: #fff; }
+.rs-badge-results      { background: var(--orange); color: #fff; }
+.rs-badge-finished     { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
+.rs-badge-ended-manual { background: rgba(244,67,54,0.35); color: rgba(255,200,195,1); }
+.rs-badge-ended-auto   { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }

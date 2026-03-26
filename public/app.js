@@ -2,6 +2,16 @@
 //  FAMILY QUIZ — app.js
 // ============================================================
 
+// ----- UTILS -----
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ----- SILLY NAMES -----
 const ADJECTIVES = [
   'Bouncy','Wiggly','Giggly','Fluffy','Wobbly','Sneaky','Grumpy',
@@ -16,25 +26,135 @@ const ANIMALS = [
   'Salamander','Tapir','Binturong','Marmot','Alpaca',
 ];
 
+// ----- GENERATING SCREEN STATUS MESSAGES -----
+//  Add new messages here in future releases to keep the loading screen fresh.
+const GENERATION_STATUSES = [
+  'Reticulating splines…',
+  'Consulting the oracle…',
+  'Waking up the quiz elves…',
+  'Arguing about which answer is correct…',
+  'Bribing the AI with compliments…',
+  'Cross-referencing the encyclopedia…',
+  'Calibrating the difficulty dial…',
+  'Polishing the trophy…',
+  'Making sure none of the answers are "all of the above"…',
+  'Checking the answers aren\'t all C…',
+  'Asking Claude very nicely…',
+  'Shuffling the question deck…',
+  'Verifying nobody cheated…',
+  'Counting to ten and back again…',
+  'Separating the trick questions from the merely evil ones…',
+];
+
+// ----- BANNED WORDS -----
+//  Update this list in future releases. Word-boundary matched (standalone words only).
+const BannedWords = {
+  list: ['donald','trump','elon','musk','fuck','shit','ass','nigger','negro','bitch','cunt'],
+
+  _re() {
+    return new RegExp(`\\b(${this.list.join('|')})\\b`, 'i');
+  },
+
+  /** True if text contains any banned word as a standalone word. */
+  contains(text) {
+    return text ? this._re().test(text) : false;
+  },
+
+  /** True if any text field of a question object contains a banned word. */
+  containsInQuestion(q) {
+    const fields = [q.question, q.explanation, ...(q.options || [])];
+    return fields.some(f => f && this.contains(f));
+  },
+};
+
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
-    version: '1.7',
-    label: 'v1.7 — More Ways to Play',
+    version: '1.16',
+    label: 'v1.16: Host Controls & Game History',
     date: 'March 2026',
     changes: [
-      '"No Timer" option — take as long as you need, great for younger kids',
-      'Speed scoring mode — answer faster to earn more points (up to 1000!)',
+      'Hosts can now end any game early using the 🛑 End Game button on the question or results screen. All players are immediately taken to the final scores.',
+      'Recent Games now shows a status badge for each game — Active, Finished, or Ended Early.',
+    ],
+  },
+  {
+    version: '1.15',
+    label: 'v1.15: Generating Screen & Content Filters',
+    date: 'March 2026',
+    changes: [
+      'The question-generating screen now shows a playful status message while the AI is thinking.',
+      'There is now a list of banned words — topics and names that contain them are automatically handled to keep things family friendly.',
+    ],
+  },
+  {
+    version: '1.14',
+    label: 'v1.14: Question Feedback',
+    date: 'March 2026',
+    changes: [
+      'Tap 👍 or 👎 on any question, on either the question or results screen.',
+      'Your vote persists between both screens and you can undo it at any time.',
+      'Votes are counted per question across all games. Questions with more thumbs down than up gradually drop out of rotation.',
+    ],
+  },
+  {
+    version: '1.13',
+    label: 'v1.13: Showdown Live',
+    date: 'March 2026',
+    changes: [
+      'The app is now called Showdown Live!',
+      '👎 Flag a bad question right from the question screen, not just the results screen. Useful when two answers look the same and you\'re not sure which is right.',
+      'Questions are now stored in a shared server bank. Every game builds it up, so returning to the same topic means fewer AI calls and more variety over time.',
+    ],
+  },
+  {
+    version: '1.12',
+    label: 'v1.12: Polish and Question Feedback',
+    date: 'March 2026',
+    changes: [
+      '👎 Flag a question you don\'t like on the results screen. It will appear less often in future games.',
+      'Removed em dashes throughout the app, they were everywhere and nobody asked for them',
+    ],
+  },
+  {
+    version: '1.11',
+    label: 'v1.11: Results Screen Upgrades',
+    date: 'March 2026',
+    changes: [
+      'Results screen now shows every player: green for correct, red for wrong',
+      'Your own chip is outlined so you can find yourself instantly',
+      'Celebratory banner when the whole group gets a question right',
+      'Commiseration banner when nobody gets it, because sometimes the questions are just hard',
+    ],
+  },
+  {
+    version: '1.10',
+    label: 'v1.10: Polish & Accessibility',
+    date: 'March 2026',
+    changes: [
+      '🔊 Read Aloud now highlights the question and each answer option as it\'s being read',
+      'Share button now copies a friendly message with the quiz topic, great for iMessage and WhatsApp',
+      '20-question option added to host setup',
+      'Save to iPhone home screen now shows the quiz icon and title',
+    ],
+  },
+  {
+    version: '1.7',
+    label: 'v1.7: More Ways to Play',
+    date: 'March 2026',
+    changes: [
+      '"No Timer" option: take as long as you need, great for younger kids',
+      'Speed scoring mode: answer faster to earn more points (up to 1000!)',
       'Fixed dice button sizing in the join form',
       'Fixed What\'s New modal header text colour',
     ],
   },
   {
     version: '1.6',
-    label: 'v1.6 — Your Name, Your Way',
+    label: 'v1.6: Your Name, Your Way',
     date: 'March 2026',
     changes: [
-      'Players now use their entered name throughout the game — no more hidden silly names',
+      'Players now use their entered name throughout the game. No more hidden silly names.',
       'Added 🎲 button on the join screen to fill in a random silly name if you want one',
       'Wrong answer card now shows in red so you know immediately you got it wrong',
       'Correct answer card stays green when you got it right',
@@ -42,16 +162,16 @@ const VERSIONS = [
   },
   {
     version: '1.5',
-    label: 'v1.5 — Analytics',
+    label: 'v1.5: Analytics',
     date: 'March 2026',
     changes: [
       'Added Google Analytics via Firebase Analytics',
-      'Removed auto-playing text-to-speech — now manual only',
+      'Removed auto-playing text-to-speech, now manual only',
     ],
   },
   {
     version: '1.4',
-    label: 'v1.4 — Navigation Fix',
+    label: 'v1.4: Navigation Fix',
     date: 'March 2026',
     changes: [
       'Fixed host getting stuck on scoreboard after clicking Next Question',
@@ -60,7 +180,7 @@ const VERSIONS = [
   },
   {
     version: '1.3',
-    label: 'v1.3 — Read Aloud',
+    label: 'v1.3: Read Aloud',
     date: 'March 2026',
     changes: [
       'Added 🔊 Read Aloud button on question screen',
@@ -70,7 +190,7 @@ const VERSIONS = [
   },
   {
     version: '1.2',
-    label: 'v1.2 — Question Bank',
+    label: 'v1.2: Question Bank',
     date: 'March 2026',
     changes: [
       'Questions are now cached locally so the AI is called less often',
@@ -80,7 +200,7 @@ const VERSIONS = [
   },
   {
     version: '1.1',
-    label: 'v1.1 — Difficulty Levels',
+    label: 'v1.1: Difficulty Levels',
     date: 'March 2026',
     changes: [
       'Added difficulty slider: Easy, Medium, Difficult, Impossible',
@@ -90,7 +210,7 @@ const VERSIONS = [
   },
   {
     version: '1.0',
-    label: 'v1.0 — Initial Release',
+    label: 'v1.0: Initial Release',
     date: 'March 2026',
     changes: [
       'Real-time multiplayer quiz on any topic',
@@ -107,13 +227,14 @@ const DIFFICULTY_LABELS = ['Easy', 'Medium', 'Difficult', 'Impossible'];
 
 // ----- STATE -----
 const state = {
-  userId:         null,
-  sillyName:      null,
-  sessionId:      null,
-  isHost:         false,
-  unsubscribers:  [],
-  timerInterval:  null,
-  endingQuestion: false,
+  userId:           null,
+  sillyName:        null,
+  sessionId:        null,
+  isHost:           false,
+  unsubscribers:    [],
+  timerInterval:    null,
+  endingQuestion:   false,
+  questionFeedback: {},  // key: lowercase question text → 'up' | 'down' | null
 };
 
 let db, auth;
@@ -152,6 +273,46 @@ function showScreen(id) {
 
 function showError(msg) { alert(msg); }
 
+function closeBannedModal() {
+  document.getElementById('banned-modal').style.display = 'none';
+}
+function showBannedModal() {
+  document.getElementById('banned-modal').style.display = 'flex';
+}
+
+const GeneratingAnimation = {
+  _interval: null,
+  _msgs:     [],
+  _idx:      0,
+
+  start() {
+    const el = document.getElementById('generating-status');
+    if (!el) return;
+    // Shuffle for variety each run
+    this._msgs = [...GENERATION_STATUSES].sort(() => Math.random() - 0.5);
+    this._idx  = 0;
+    el.textContent = this._msgs[0];
+    el.style.opacity = '1';
+
+    this._interval = setInterval(() => {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        if (!this._interval) return;
+        this._idx = (this._idx + 1) % this._msgs.length;
+        el.textContent = this._msgs[this._idx];
+        el.style.opacity = '1';
+      }, 350);
+    }, 2800);
+  },
+
+  stop() {
+    clearInterval(this._interval);
+    this._interval = null;
+    const el = document.getElementById('generating-status');
+    if (el) el.style.opacity = '0';
+  },
+};
+
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 // ============================================================
@@ -176,16 +337,65 @@ const QuestionBank = {
     return `${topic.toLowerCase().trim()}||${difficulty}`;
   },
 
-  /** Return up to `count` questions for topic+difficulty, preferring unseen ones. */
-  get(topic, difficulty, count) {
+  /** Firestore document ID — safe alphanumeric key for the topic+difficulty. */
+  _firestoreKey(topic, difficulty) {
+    const t = topic.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').slice(0, 60);
+    return `${t}_d${difficulty}`;
+  },
+
+  /** Pull questions for this topic+difficulty from Firestore into the local bank. */
+  async fetchFromFirestore(topic, difficulty) {
+    if (!db) return;
+    try {
+      const snap = await db.collection('questionBank').doc(this._firestoreKey(topic, difficulty)).get();
+      if (!snap.exists) return;
+      const serverQuestions = snap.data().questions || [];
+      if (serverQuestions.length > 0) this.add(topic, difficulty, serverQuestions);
+    } catch (e) { console.warn('QuestionBank fetch failed:', e); }
+  },
+
+  /** Update upvotes/downvotes/score for a question in localStorage.
+   *  oldVote / newVote: 'up' | 'down' | null */
+  updateLocalVote(topic, difficulty, questionText, oldVote, newVote) {
     const bank = this.load();
     const key  = this._bankKey(topic, difficulty);
     const pool = bank[key] || [];
+    const qKey = questionText.toLowerCase().trim();
+    const q    = pool.find(q => q.question.toLowerCase().trim() === qKey);
+    if (!q) return;
+    if (q.upvotes   == null) q.upvotes   = 0;
+    if (q.downvotes == null) q.downvotes = 0;
+    if (oldVote === 'up')   q.upvotes   = Math.max(0, q.upvotes   - 1);
+    if (oldVote === 'down') q.downvotes = Math.max(0, q.downvotes - 1);
+    if (newVote === 'up')   q.upvotes++;
+    if (newVote === 'down') q.downvotes++;
+    q.score  = q.upvotes - q.downvotes;
+    bank[key] = pool;
+    this.save(bank);
+  },
+
+  /** Persist a vote delta via the submitVote Cloud Function (server-side write). */
+  async syncVoteToFirestore(topic, difficulty, questionText, oldVote, newVote) {
+    try {
+      const fn = firebase.app().functions('us-east1').httpsCallable('submitVote');
+      await fn({ topic, difficulty, questionText, oldVote, newVote });
+    } catch (e) { console.warn('Vote sync failed:', e); }
+  },
+
+  /** Return up to `count` questions for topic+difficulty.
+   *  Priority order: unseen → seen → low-score (score < 0 last). */
+  get(topic, difficulty, count) {
+    const bank    = this.load();
+    const key     = this._bankKey(topic, difficulty);
+    const pool    = bank[key] || [];
     if (pool.length === 0) return [];
 
-    const unseen = pool.filter(q => !q.seenDate);
-    const seen   = pool.filter(q =>  q.seenDate)
+    const isBad = q => (q.score || 0) < 0;
+
+    const unseen  = pool.filter(q => !q.seenDate && !isBad(q));
+    const seen    = pool.filter(q =>  q.seenDate  && !isBad(q))
       .sort((a, b) => new Date(a.seenDate) - new Date(b.seenDate));
+    const bad     = pool.filter(isBad);
 
     // Shuffle unseen for variety
     for (let i = unseen.length - 1; i > 0; i--) {
@@ -197,7 +407,7 @@ const QuestionBank = {
       if (Math.random() < 0.3) [seen[i], seen[i + 1]] = [seen[i + 1], seen[i]];
     }
 
-    return [...unseen, ...seen].slice(0, count);
+    return [...unseen, ...seen, ...bad].slice(0, count);
   },
 
   /** Add new questions to the bank, deduplicating by question text. */
@@ -230,6 +440,67 @@ const QuestionBank = {
 };
 
 // ============================================================
+//  QUESTION FEEDBACK  (session-scoped, syncs to Firestore)
+// ============================================================
+//  state.questionFeedback[key] = 'up' | 'down' | null
+//  Persists within a game session (question screen ↔ results screen).
+
+/** Submit or toggle a feedback vote for the current question.
+ *  Handles local bank update + Firestore sync. */
+async function submitQuestionFeedback(topic, difficulty, q, clickedVote) {
+  const key    = q.question.toLowerCase().trim();
+  const oldVote = state.questionFeedback[key] || null;
+  const newVote = oldVote === clickedVote ? null : clickedVote;  // tap again = undo
+
+  state.questionFeedback[key] = newVote;
+  QuestionBank.updateLocalVote(topic, difficulty, q.question, oldVote, newVote);
+  QuestionBank.syncVoteToFirestore(topic, difficulty, q.question, oldVote, newVote);
+  updateFeedbackUI(key);
+}
+
+/** Sync the visual state of all feedback buttons for this question. */
+function updateFeedbackUI(qKey) {
+  const vote = state.questionFeedback[qKey] || null;
+  const pairs = [
+    ['feedback-up-q', 'feedback-down-q'],
+    ['feedback-up',   'feedback-down'],
+  ];
+  pairs.forEach(([upId, downId]) => {
+    const upBtn   = document.getElementById(upId);
+    const downBtn = document.getElementById(downId);
+    if (upBtn) {
+      upBtn.classList.toggle('voted-up',   vote === 'up');
+      upBtn.classList.toggle('voted-down', false);
+    }
+    if (downBtn) {
+      downBtn.classList.toggle('voted-down', vote === 'down');
+      downBtn.classList.toggle('voted-up',   false);
+    }
+  });
+}
+
+/** Wire the 👍/👎 buttons for a given screen suffix ('q' for question, '' for results). */
+function wireFeedbackButtons(suffix, topic, difficulty, q) {
+  const sep    = suffix ? '-' + suffix : '';
+  const upBtn  = document.getElementById('feedback-up'   + sep);
+  const downBtn= document.getElementById('feedback-down' + sep);
+  const qKey   = q.question.toLowerCase().trim();
+
+  // Set initial visual state
+  const vote = state.questionFeedback[qKey] || null;
+  if (upBtn) {
+    upBtn.classList.toggle('voted-up',   vote === 'up');
+    upBtn.classList.toggle('voted-down', false);
+    upBtn.onclick = () => submitQuestionFeedback(topic, difficulty, q, 'up');
+  }
+  if (downBtn) {
+    downBtn.classList.toggle('voted-down', vote === 'down');
+    downBtn.classList.toggle('voted-up',   false);
+    downBtn.onclick = () => submitQuestionFeedback(topic, difficulty, q, 'down');
+  }
+}
+
+// ============================================================
 //  TEXT-TO-SPEECH
 // ============================================================
 
@@ -240,6 +511,7 @@ const TTS = {
     this._active = false;
     window.speechSynthesis.cancel();
     this._updateBtn();
+    document.querySelectorAll('.tts-reading').forEach(el => el.classList.remove('tts-reading'));
   },
 
   _updateBtn() {
@@ -289,12 +561,22 @@ const TTS = {
     this._active = true;
     this._updateBtn();
     await delay(200);
+
+    // Highlight question card while reading the question text
+    const qCard = document.querySelector('.question-card');
+    if (qCard) qCard.classList.add('tts-reading');
     await this.speak(question);
+    if (qCard) qCard.classList.remove('tts-reading');
+
     await delay(400);
-    const letters = ['A', 'B', 'C', 'D'];
+    const letters  = ['A', 'B', 'C', 'D'];
+    const optBtns  = document.querySelectorAll('.option-btn');
     for (let i = 0; i < options.length; i++) {
       if (!this._active) break;
+      // Highlight each option button as it is being read aloud
+      if (optBtns[i]) optBtns[i].classList.add('tts-reading');
       await this.speak(`${letters[i]}: ${options[i]}`);
+      if (optBtns[i]) optBtns[i].classList.remove('tts-reading');
       await delay(200);
     }
     this._active = false;
@@ -355,7 +637,7 @@ function renderPlayerChips(containerId, players) {
   if (!el) return;
   el.innerHTML = players.map(p =>
     `<div class="player-chip ${p.id === state.userId ? 'me' : ''}">
-      ${p.displayName}${p.id === state.userId ? ' <em>(you)</em>' : ''}
+      ${escapeHtml(p.displayName)}${p.id === state.userId ? ' <em>(you)</em>' : ''}
     </div>`
   ).join('');
 }
@@ -367,7 +649,7 @@ function renderLeaderboard(containerId, players) {
   el.innerHTML = players.map((p, i) =>
     `<div class="lb-row ${p.id === state.userId ? 'lb-me' : ''}">
       <span class="lb-rank">${medals[i] ?? `${i + 1}.`}</span>
-      <span class="lb-name">${p.displayName}${p.id === state.userId ? ' ✨' : ''}</span>
+      <span class="lb-name">${escapeHtml(p.displayName)}${p.id === state.userId ? ' ✨' : ''}</span>
       <span class="lb-score">${p.score} pts</span>
     </div>`
   ).join('');
@@ -414,39 +696,55 @@ function showHostSetup() {
 
   document.getElementById('host-setup-form').onsubmit = async e => {
     e.preventDefault();
-    const hostName    = document.getElementById('host-name').value.trim();
+    let hostName      = document.getElementById('host-name').value.trim();
     const topic       = document.getElementById('topic').value.trim();
     const difficulty  = parseInt(document.getElementById('difficulty').value);
     const numQ        = parseInt(document.getElementById('num-questions').value);
     const timeQ       = parseInt(document.getElementById('time-per-q').value);
     const scoringMode = document.getElementById('scoring-mode').value;
     if (!hostName || !topic) return;
+    // Silently replace banned names with a random name
+    if (BannedWords.contains(hostName)) hostName = generateSillyName();
+    // Reject banned topics
+    if (BannedWords.contains(topic)) {
+      document.getElementById('topic').value = '';
+      showBannedModal();
+      return;
+    }
     await startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoringMode);
   };
 }
 
 async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoringMode) {
+  state.questionFeedback = {};  // reset feedback state for new game
   showScreen('screen-generating');
   document.getElementById('generating-topic').textContent =
-    `"${topic}" — ${DIFFICULTY_LABELS[difficulty]}`;
+    `"${topic}" · ${DIFFICULTY_LABELS[difficulty]}`;
+  GeneratingAnimation.start();
 
   try {
     await ensureAuth();
 
-    // Try to pull questions from the local bank first
+    // 1. Check local bank first (fast, no network)
     let questions = QuestionBank.get(topic, difficulty, numQ);
-    const fromBank = questions.length;
 
-    if (fromBank < numQ) {
-      // Need to generate more — ask AI for the full count (extra go into bank for later)
-      const needed = numQ - fromBank;
-      const generated = await generateQuestions(topic, needed + 5, difficulty);
-      QuestionBank.add(topic, difficulty, generated);
-      // Re-fetch so selection logic applies to the full pool
+    // 2. If local bank is short, pull from Firestore server bank
+    if (questions.length < numQ) {
+      await QuestionBank.fetchFromFirestore(topic, difficulty);
       questions = QuestionBank.get(topic, difficulty, numQ);
     }
 
-    // Mark selected questions as seen today
+    // 3. If still short, generate with AI (extra questions go into the bank for later)
+    if (questions.length < numQ) {
+      const needed    = numQ - questions.length;
+      const generated = await generateQuestions(topic, needed + 5, difficulty);
+      // Filter out any questions containing banned words before storing
+      const clean = generated.filter(q => !BannedWords.containsInQuestion(q));
+      QuestionBank.add(topic, difficulty, clean);
+      questions = QuestionBank.get(topic, difficulty, numQ);
+    }
+
+    // 4. Mark selected questions as seen today
     QuestionBank.markSeen(topic, difficulty, questions.map(q => q.question));
 
     // Find a unique 4-char game code
@@ -460,6 +758,7 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
     state.displayName = hostName;
     state.sessionId   = code;
     state.isHost      = true;
+    state.topic       = topic;
 
     await db.collection('sessions').doc(code).set({
       hostId:               state.userId,
@@ -485,12 +784,26 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
         joinedAt:                firebase.firestore.FieldValue.serverTimestamp(),
       });
 
+    GeneratingAnimation.stop();
     showLobbyHost();
   } catch (err) {
     console.error(err);
+    GeneratingAnimation.stop();
     showScreen('screen-host-setup');
     showError(`Could not create game: ${err.message}`);
   }
+}
+
+// ----- END GAME (HOST) -----
+async function cancelGame() {
+  if (!state.isHost || !state.sessionId) return;
+  try {
+    await db.collection('sessions').doc(state.sessionId).update({
+      status:  'ended-manual',
+      endedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    // Navigation handled by onSnapshot watchers (same path as 'finished')
+  } catch (e) { console.warn('cancelGame failed:', e); }
 }
 
 // ----- LOBBY (HOST) -----
@@ -504,7 +817,10 @@ function showLobbyHost() {
   document.getElementById('share-link').value = shareLink;
 
   document.getElementById('copy-link-btn').onclick = () => {
-    navigator.clipboard.writeText(shareLink).then(() => {
+    const clipText = state.topic
+      ? `Join our Family Quiz about "${state.topic}"! Code: ${state.sessionId} or tap: ${shareLink}`
+      : shareLink;
+    navigator.clipboard.writeText(clipText).then(() => {
       const btn = document.getElementById('copy-link-btn');
       btn.textContent = '✅ Copied!';
       setTimeout(() => { btn.textContent = '📋 Copy Link'; }, 2000);
@@ -557,9 +873,11 @@ function showJoin() {
 
   document.getElementById('join-form').onsubmit = async e => {
     e.preventDefault();
-    const name = document.getElementById('player-name').value.trim();
+    let name   = document.getElementById('player-name').value.trim();
     const code = document.getElementById('join-code').value.trim().toUpperCase();
     if (!name || !code) return;
+    // Silently replace banned names with a random name
+    if (BannedWords.contains(name)) name = generateSillyName();
     await joinGame(name, code);
   };
 }
@@ -573,9 +891,10 @@ async function joinGame(playerName, code) {
     const session = snap.data();
     if (session.status !== 'lobby') { showError('This game has already started!'); return; }
 
-    state.displayName = playerName;
-    state.sessionId   = code;
-    state.isHost      = false;
+    state.displayName    = playerName;
+    state.sessionId      = code;
+    state.isHost         = false;
+    state.questionFeedback = {};
 
     await sessionRef.collection('players').doc(state.userId).set({
       displayName: playerName,
@@ -631,7 +950,7 @@ function showQuestion(sessionData) {
   q.options.forEach((opt, i) => {
     const btn = document.createElement('button');
     btn.className = `option-btn opt-${letters[i].toLowerCase()}`;
-    btn.innerHTML = `<span class="opt-badge">${letters[i]}</span><span class="opt-text">${opt}</span>`;
+    btn.innerHTML = `<span class="opt-badge">${letters[i]}</span><span class="opt-text">${escapeHtml(opt)}</span>`;
     btn.onclick = async () => {
       if (hasAnswered) return;
       hasAnswered = true;
@@ -653,6 +972,9 @@ function showQuestion(sessionData) {
   // TTS — manual only, button toggles read/stop
   document.getElementById('tts-repeat-btn').onclick = () => TTS.readQuestion(q.question, q.options);
 
+  // Feedback buttons (question screen)
+  wireFeedbackButtons('q', sessionData.topic, sessionData.difficulty, q);
+
   // Timer
   startTimer(timePerQuestion, questionStartTime, qIdx);
 
@@ -661,6 +983,7 @@ function showQuestion(sessionData) {
   if (state.isHost) {
     hostPanel.style.display = 'flex';
     document.getElementById('skip-btn').onclick = () => endQuestion(qIdx);
+    document.getElementById('end-game-btn-q').onclick = cancelGame;
 
     // Auto-advance when ALL players have answered
     const sessionRef = db.collection('sessions').doc(state.sessionId);
@@ -683,7 +1006,7 @@ function showQuestion(sessionData) {
     if (!data) return;
     if (data.status === 'results' && data.currentQuestionIndex === qIdx) {
       cleanup(); showResults(data);
-    } else if (data.status === 'finished') {
+    } else if (data.status === 'finished' || data.status === 'ended-manual') {
       cleanup(); showFinal();
     } else if (data.status === 'question' && data.currentQuestionIndex !== qIdx) {
       cleanup(); showQuestion(data);
@@ -799,7 +1122,7 @@ async function showResults(sessionData) {
   card.classList.add('loading');
 
   document.getElementById('correct-answer').innerHTML =
-    `<span class="answer-badge">${correctLetter}</span>${correctText}`;
+    `<span class="answer-badge">${correctLetter}</span>${escapeHtml(correctText)}`;
   document.getElementById('results-explanation').textContent = q.explanation || '';
 
   const pSnap   = await db.collection('sessions').doc(state.sessionId).collection('players').get();
@@ -813,13 +1136,32 @@ async function showResults(sessionData) {
     label.textContent = '✅ Correct Answer';
   } else {
     card.classList.add('wrong');
-    label.textContent = '❌ You got this wrong — correct answer was:';
+    label.textContent = '❌ You got this wrong. Correct answer was:';
   }
 
-  const correct = players.filter(p => p.currentAnswer === q.correct);
-  document.getElementById('who-got-it').innerHTML = correct.length === 0
-    ? '<p class="no-one">Nobody got this one — tricky!</p>'
-    : correct.map(p => `<div class="got-it-chip">✅ ${p.displayName}</div>`).join('');
+  // Color-coded player chips: green = correct, red = wrong, outline = you
+  document.getElementById('who-got-it').innerHTML = players.map(p => {
+    const isCorrect = p.currentAnswer === q.correct;
+    const isMe      = p.id === state.userId;
+    const classes   = ['got-it-chip', isCorrect ? 'correct' : 'wrong', isMe ? 'me' : ''].join(' ').trim();
+    const icon      = isCorrect ? '✅' : '❌';
+    const youLabel  = isMe ? ' <em>(you)</em>' : '';
+    return `<div class="${classes}">${icon} ${escapeHtml(p.displayName)}${youLabel}</div>`;
+  }).join('');
+
+  // Reaction banner: all correct or all wrong
+  const correctCount = players.filter(p => p.currentAnswer === q.correct).length;
+  const bannerEl = document.getElementById('reaction-banner');
+  if (players.length > 1 && correctCount === players.length) {
+    bannerEl.innerHTML = '<div class="reaction-banner all-correct">🎉🎉🎉 Everyone got it right!</div>';
+  } else if (correctCount === 0) {
+    bannerEl.innerHTML = '<div class="reaction-banner all-wrong">😬 Nobody got this one, even the AI is impressed!</div>';
+  } else {
+    bannerEl.innerHTML = '';
+  }
+
+  // Feedback buttons (results screen)
+  wireFeedbackButtons('', sessionData.topic, sessionData.difficulty, q);
 
   renderLeaderboard('results-leaderboard', players);
 
@@ -854,6 +1196,7 @@ async function showResults(sessionData) {
       // Navigation for host is handled by the watcher below — same as player
     };
 
+    document.getElementById('end-game-btn-r').onclick = cancelGame;
     document.getElementById('host-results-panel').style.display = 'block';
     document.getElementById('player-waiting-msg').style.display = 'none';
   } else {
@@ -866,7 +1209,7 @@ async function showResults(sessionData) {
     const data = snap.data();
     if (!data) return;
     if (data.status === 'question') { cleanup(); showQuestion(data); }
-    else if (data.status === 'finished') { cleanup(); showFinal(); }
+    else if (data.status === 'finished' || data.status === 'ended-manual') { cleanup(); showFinal(); }
   });
   state.unsubscribers.push(unsub);
 
@@ -932,13 +1275,18 @@ async function renderRecentSessions(containerId) {
                qIdx: d.currentQuestionIndex, total: (d.questions || []).length,
                players: pSnap.size };
     }));
-    const statusLabel = s => s === 'lobby' ? 'In Lobby' : s === 'question' ? 'Active' :
-                              s === 'results' ? 'Results' : s === 'finished' ? 'Finished' : s;
+    const statusLabel = s =>
+      s === 'lobby'        ? 'In Lobby'       :
+      s === 'question'     ? 'Active'          :
+      s === 'results'      ? 'Results'         :
+      s === 'finished'     ? 'Finished'        :
+      s === 'ended-manual' ? 'Ended - Manual'  :
+      s === 'ended-auto'   ? 'Ended - Auto'    : s;
     container.innerHTML = `
       <div class="recent-sessions-title">🕹️ Recent Games</div>
       ${rows.map(r => `
         <div class="recent-session-row">
-          <span class="rs-topic">${r.topic || '—'}</span>
+          <span class="rs-topic">${escapeHtml(r.topic || '?')}</span>
           <span class="rs-meta">
             <span class="rs-badge rs-badge-${r.status}">${statusLabel(r.status)}</span>
             Q${Math.max(r.qIdx + 1, 1)}/${r.total || '?'} &nbsp;·&nbsp; ${r.players} player${r.players !== 1 ? 's' : ''}
@@ -973,4 +1321,5 @@ function closeWhatsNew(e) {
 }
 
 window.App = { showHome, showHostSetup, showJoin, showWhatsNew, closeWhatsNew };
+window.closeBannedModal = closeBannedModal;
 document.addEventListener('DOMContentLoaded', () => init().catch(console.error));
