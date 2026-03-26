@@ -70,21 +70,33 @@ const BannedWords = {
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
-    version: '1.16',
-    label: 'v1.16: Host Controls & Game History',
+    version: '1.18',
+    label: 'v1.18: Security',
     date: 'March 2026',
     changes: [
-      'Hosts can now end any game early using the 🛑 End Game button on the question or results screen. All players are immediately taken to the final scores.',
-      'Recent Games now shows a status badge for each game — Active, Finished, or Ended Early.',
+      'Firestore rules tightened: session state writable only by the host; player scores writable only by the host.',
+      'Question bank is now read-only for clients — all writes go through server-side Cloud Functions.',
+      'XSS: player names, topics, and answer text are now escaped before rendering.',
+      'Firebase App Check added to prevent direct calls to the question-generation Cloud Function.',
+    ],
+  },
+  {
+    version: '1.16',
+    label: 'v1.16: Host Controls',
+    date: 'March 2026',
+    changes: [
+      'Host can end a game early from the question or results screen. All players are redirected to final scores.',
+      'Recent Games shows a status badge for each game.',
+      'Inactive sessions older than 7 days are automatically closed.',
     ],
   },
   {
     version: '1.15',
-    label: 'v1.15: Generating Screen & Content Filters',
+    label: 'v1.15: Generating Screen',
     date: 'March 2026',
     changes: [
-      'The question-generating screen now shows a playful status message while the AI is thinking.',
-      'There is now a list of banned words — topics and names that contain them are automatically handled to keep things family friendly.',
+      'Status messages shown on the generating screen while questions are being created.',
+      'Banned word filtering applied to topics, player names, and AI-generated questions.',
     ],
   },
   {
@@ -92,9 +104,8 @@ const VERSIONS = [
     label: 'v1.14: Question Feedback',
     date: 'March 2026',
     changes: [
-      'Tap 👍 or 👎 on any question, on either the question or results screen.',
-      'Your vote persists between both screens and you can undo it at any time.',
-      'Votes are counted per question across all games. Questions with more thumbs down than up gradually drop out of rotation.',
+      '👍/👎 buttons on the question and results screens. Tap again to undo.',
+      'Votes are shared across all devices. Questions with a negative score are deprioritised.',
     ],
   },
   {
@@ -102,62 +113,56 @@ const VERSIONS = [
     label: 'v1.13: Showdown Live',
     date: 'March 2026',
     changes: [
-      'The app is now called Showdown Live!',
-      '👎 Flag a bad question right from the question screen, not just the results screen. Useful when two answers look the same and you\'re not sure which is right.',
-      'Questions are now stored in a shared server bank. Every game builds it up, so returning to the same topic means fewer AI calls and more variety over time.',
+      'App renamed to Showdown Live.',
+      'Flag button added to the question screen (previously results screen only).',
+      'Questions stored in a shared server bank across all devices.',
     ],
   },
   {
     version: '1.12',
-    label: 'v1.12: Polish and Question Feedback',
+    label: 'v1.12: Question Flagging',
     date: 'March 2026',
     changes: [
-      '👎 Flag a question you don\'t like on the results screen. It will appear less often in future games.',
-      'Removed em dashes throughout the app, they were everywhere and nobody asked for them',
+      'Flag button on the results screen. Flagged questions appear less often.',
     ],
   },
   {
     version: '1.11',
-    label: 'v1.11: Results Screen Upgrades',
+    label: 'v1.11: Results Screen',
     date: 'March 2026',
     changes: [
-      'Results screen now shows every player: green for correct, red for wrong',
-      'Your own chip is outlined so you can find yourself instantly',
-      'Celebratory banner when the whole group gets a question right',
-      'Commiseration banner when nobody gets it, because sometimes the questions are just hard',
+      'Results screen shows a colour-coded chip per player (green = correct, red = wrong).',
+      'Banner shown when all players get the same outcome.',
     ],
   },
   {
     version: '1.10',
-    label: 'v1.10: Polish & Accessibility',
+    label: 'v1.10: Accessibility',
     date: 'March 2026',
     changes: [
-      '🔊 Read Aloud now highlights the question and each answer option as it\'s being read',
-      'Share button now copies a friendly message with the quiz topic, great for iMessage and WhatsApp',
-      '20-question option added to host setup',
-      'Save to iPhone home screen now shows the quiz icon and title',
+      'Read Aloud highlights text as it speaks.',
+      'Share copies a message that includes the quiz topic.',
+      '20-question option added.',
+      'iPhone home screen icon and title.',
     ],
   },
   {
     version: '1.7',
-    label: 'v1.7: More Ways to Play',
+    label: 'v1.7: Timer & Scoring Options',
     date: 'March 2026',
     changes: [
-      '"No Timer" option: take as long as you need, great for younger kids',
-      'Speed scoring mode: answer faster to earn more points (up to 1000!)',
-      'Fixed dice button sizing in the join form',
-      'Fixed What\'s New modal header text colour',
+      'No Timer option added.',
+      'Speed scoring mode: faster answers score more (up to 1000 pts).',
     ],
   },
   {
     version: '1.6',
-    label: 'v1.6: Your Name, Your Way',
+    label: 'v1.6: Player Names',
     date: 'March 2026',
     changes: [
-      'Players now use their entered name throughout the game. No more hidden silly names.',
-      'Added 🎲 button on the join screen to fill in a random silly name if you want one',
-      'Wrong answer card now shows in red so you know immediately you got it wrong',
-      'Correct answer card stays green when you got it right',
+      'Players use their entered name throughout the game.',
+      '🎲 button on the join screen generates a random name.',
+      'Answer cards are colour-coded correct/wrong.',
     ],
   },
   {
@@ -165,17 +170,17 @@ const VERSIONS = [
     label: 'v1.5: Analytics',
     date: 'March 2026',
     changes: [
-      'Added Google Analytics via Firebase Analytics',
-      'Removed auto-playing text-to-speech, now manual only',
+      'Google Analytics added.',
+      'Text-to-speech changed to manual only.',
     ],
   },
   {
     version: '1.4',
-    label: 'v1.4: Navigation Fix',
+    label: 'v1.4: Navigation',
     date: 'March 2026',
     changes: [
-      'Fixed host getting stuck on scoreboard after clicking Next Question',
-      'Both host and players now navigate via real-time Firestore watchers',
+      'Fixed host navigation after Next Question.',
+      'All screen transitions driven by Firestore watchers.',
     ],
   },
   {
@@ -183,9 +188,7 @@ const VERSIONS = [
     label: 'v1.3: Read Aloud',
     date: 'March 2026',
     changes: [
-      'Added 🔊 Read Aloud button on question screen',
-      'Tap again to stop mid-read',
-      'Great for younger players who are still learning to read',
+      '🔊 Read Aloud button on the question screen. Tap again to stop.',
     ],
   },
   {
@@ -193,19 +196,16 @@ const VERSIONS = [
     label: 'v1.2: Question Bank',
     date: 'March 2026',
     changes: [
-      'Questions are now cached locally so the AI is called less often',
-      'Unseen questions are always shown first',
-      'Oldest questions get recycled when the bank runs low',
+      'Questions cached locally to reduce AI calls.',
+      'Unseen questions shown first; oldest recycled when the bank runs low.',
     ],
   },
   {
     version: '1.1',
-    label: 'v1.1: Difficulty Levels',
+    label: 'v1.1: Difficulty',
     date: 'March 2026',
     changes: [
-      'Added difficulty slider: Easy, Medium, Difficult, Impossible',
-      'Claude tailors question complexity to the chosen level',
-      'API key is now saved so you only type it once',
+      'Difficulty slider added: Easy, Medium, Difficult, Impossible.',
     ],
   },
   {
@@ -213,11 +213,10 @@ const VERSIONS = [
     label: 'v1.0: Initial Release',
     date: 'March 2026',
     changes: [
-      'Real-time multiplayer quiz on any topic',
-      'Claude AI generates fresh questions for every game',
-      'Anonymous sign-in with silly animal names',
-      'Synchronized countdown timer across all devices',
-      'Live leaderboard after every question',
+      'Real-time multiplayer quiz on any topic.',
+      'AI-generated questions via Claude.',
+      'Countdown timer synced across all devices.',
+      'Live leaderboard after every question.',
     ],
   },
 ];
@@ -1247,7 +1246,18 @@ async function init() {
   while (attempts < 40) {
     try { firebase.app(); break; } catch { await delay(50); attempts++; }
   }
-  try { db = firebase.firestore(); auth = firebase.auth(); }
+  try {
+    db   = firebase.firestore();
+    auth = firebase.auth();
+    // App Check — blocks direct Cloud Function calls from outside the app.
+    // Replace the placeholder with the reCAPTCHA v3 site key from:
+    //   Firebase console → App Check → your web app → reCAPTCHA v3
+    // Then enable enforcement: App Check dashboard → Functions → Enforce.
+    const RECAPTCHA_SITE_KEY = 'REPLACE_WITH_RECAPTCHA_V3_SITE_KEY';
+    if (RECAPTCHA_SITE_KEY !== 'REPLACE_WITH_RECAPTCHA_V3_SITE_KEY') {
+      firebase.appCheck().activate(RECAPTCHA_SITE_KEY, true);
+    }
+  }
   catch (e) { console.error('Firebase init failed:', e); return; }
 
   const code = new URLSearchParams(location.search).get('code');

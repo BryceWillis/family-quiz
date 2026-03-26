@@ -134,28 +134,60 @@ Firebase Anonymous Authentication already creates a stable, long-lived user ID (
 
 ---
 
-### v1.18 — Security Audit & Hardening
-*Full review of client JS, Firestore rules, and Cloud Functions for exploitable vulnerabilities.*
+### ~~v1.18 — Security Audit & Hardening~~ ✅ Shipped
 
-**Scope:** This app is publicly accessible, uses anonymous auth, and stores shared data (question bank, session data). The goal is to prevent abuse, data tampering, and unexpected cost.
+| # | Area | Status |
+|---|------|--------|
+| 15 | **Firestore rules — sessions** | ✅ Done — session writes locked to host UID; player score/lastAnswerCorrect writable only by host |
+| 16 | **Firestore rules — question bank** | ✅ Done — read-only for clients; all writes via Cloud Functions (admin SDK) |
+| 17 | **Firestore rules — flaggedQuestions** | ✅ No change — delete already blocked; accepted |
+| 18 | **App Check (generateQuestions rate limiting)** | ✅ Done — App Check compat script added, activation code wired. **Requires console step:** Firebase console → App Check → register web app with reCAPTCHA v3 → fill in `RECAPTCHA_SITE_KEY` in app.js → enforce on Functions. |
+| 19 | **Banned word bypass** | ✅ Accepted — best-effort regex sufficient for family use |
+| 20 | **Anthropic API key** | ✅ No change — stored in Firebase Secrets, never in client |
+| 21 | **Session code brute force** | ✅ Accepted — short-lived codes, host can kick; low risk |
+| 22 | **XSS** | ✅ Done — `escapeHtml()` applied to all user-supplied innerHTML |
+| 23 | **Client-side score manipulation** | ✅ Covered by rules — players cannot write `score` or `lastAnswerCorrect` to their own doc. Host calculates scores (host self-cheating is accepted residual risk for a family app). Full server-side scoring deferred indefinitely. |
 
-| # | Area | Concern | Proposed Fix |
-|---|------|---------|--------------|
-| 15 | **Firestore rules — sessions** | Any authenticated user can write any field on any session (not just their own). A malicious client could set another game's `status`, `currentQuestion`, or scores. | Lock writes: session doc writable only by the host UID; player sub-docs writable only by the matching player UID. Host UID stored at session creation and checked in rules. |
-| 16 | **Firestore rules — question bank** | Any authenticated user can write to `/questionBank`, meaning a bad actor could corrupt shared questions or inject malicious content into the shared bank. | Make `/questionBank` server-write-only (only Cloud Functions can write via `firebase-admin`); clients get read access only. Remove `write` from client rules for this collection. |
-| 17 | **Firestore rules — flaggedQuestions** | Clients can read all flagged questions. No delete rule exists, but the collection leaks report data publicly to any signed-in user. | Read access is fine (low sensitivity), but confirm delete is blocked — currently it is (no `delete` rule). No change needed unless admin panel is added. |
-| 18 | **Cloud Function — generateQuestions** | No rate limiting per user. A single UID could call `generateQuestions` thousands of times, running up Anthropic API costs. | Add per-UID rate limiting: track call timestamps in Firestore or use Firebase App Check to restrict calls to the real app clients only. App Check is the simpler solution. |
-| 19 | **Banned word bypass** | Banned word regex uses `\b` word boundaries, which may not catch transliterations, leet speak, or compound words. Scope is best-effort for a family app, not strict content moderation. | Accept current approach as sufficient for a family audience. Document the limitation. Optionally pass topic through the Cloud Function (server-side check) so the list is not visible in client JS. |
-| 20 | **Anthropic API key** | API key is stored as a Firebase Secret (`defineSecret`) and never exposed to the client — already correctly handled. | No change needed. Confirm key is not in source control (`.env`, `functions/.env`). |
-| 21 | **Session hijack via shared game code** | 4-character game codes (26^4 = 456,976 combinations) are guessable by brute force. A bot could join any active game. | Mitigations: (a) codes are short-lived (game finishes in ~15 min); (b) hosts see the player list and can kick. Low risk for family use. Could add `joinedAt` rate limiting per UID as a stretch goal. |
-| 22 | **XSS — player names and topics** | Player names and topics are rendered as `textContent` (not `innerHTML`) throughout the app — no XSS risk from those fields. Question text uses `textContent` too. | Audit all DOM write points to confirm no `innerHTML` assignments use user-supplied content. Fix any found. |
-| 23 | **Client-side score manipulation** | Scores are written by each client to their own player doc. A client could write an inflated score directly to Firestore. | Move score calculation server-side: Cloud Function (or Firestore trigger) calculates scores based on answer + timestamp, writes the result. Clients submit their answer choice only. |
+---
 
-**Recommended order of implementation:** #16 (question bank write rules) → #15 (session write rules) → #23 (server-side scoring) → #18 (App Check / rate limiting) → #22 (XSS audit). Items #19–21 are low-risk / no-change.
+### v1.21 — Rematch
+*Lets the whole party jump straight into a new game from the final scores screen without anyone going back to the home screen.*
 
-**Open questions before building:**
-- For #15 (session rules): should spectators (non-players who join via the share link but don't enter a name) be allowed any write access?
-- For #23 (server-side scoring): this requires a Cloud Function or Firestore trigger to run on every answer submission — acceptable latency for the results screen delay?
+**Behaviour overview:**
+
+All players (host and non-host) see a **🔄 Rematch** button on the final scores screen. The host always creates the new game; non-host players signal their intent and then wait.
+
+**Non-host player flow:**
+1. Tap **🔄 Rematch** → screen transitions to a "challenge sent" state: large **⚔️ Rematch challenge sent!** heading, live-updating list of every player who has also tapped (shows their name as they join in), and a **✕ Cancel** link that takes them back to the home screen.
+2. When the host taps Rematch → screen shifts to **😈 Rematch Accepted!** (dramatic styling — bold/red/dark palette, menacing emoji). Player stays here while the host configures the new game.
+3. When the new game lobby is ready → player is auto-navigated to the new lobby with their display name already filled in. No re-entry of name or code needed.
+
+**Host flow:**
+1. Sees the **🔄 Rematch** button. A small live counter shows how many challengers are already waiting (e.g. "3 players want a rematch ⚔️"), updating in real time as non-host players tap.
+2. Tap **🔄 Rematch** → taken to the host setup form, pre-filled with the previous game's topic and difficulty. Host can change either before generating.
+3. Generates questions and creates the new session as normal. When the new lobby opens, the app writes `nextSessionId: newCode` to the old session doc.
+4. All players still watching the old session's final screen detect `nextSessionId` and are automatically navigated to the new lobby.
+
+**Cancellation & edge cases:**
+- Any player (including the host) can cancel at any time before the new lobby opens by tapping **✕ Cancel** / navigating away — takes them to the home screen. They simply won't appear in the new lobby.
+- Players who already left the final screen before the rematch started miss it — no notification is sent.
+- If the host cancels / navigates away, players waiting on the "challenge sent" screen are not automatically notified. The Cancel button is always visible so they are never truly stuck.
+
+**Data model:**
+- Each non-host player signals intent by creating a doc at `sessions/{sessionId}/rematch/{playerId}` with `{ displayName, requestedAt }`. Players can only write their own doc (fits existing security rules with a new subcollection rule).
+- Host watches this subcollection on the final screen to drive the live challenger count.
+- When the new session is ready, host writes `nextSessionId` to the old session doc (already allowed under host-write rules).
+- Non-host players watch the old session doc for `nextSessionId` to trigger auto-navigation.
+- Auto-join: on arrival at the new lobby the app checks `state.rematchFrom` and uses the player's saved `displayName` to create their player doc silently, skipping the join form entirely.
+
+**Firestore rules addition needed:**
+```
+match /sessions/{sessionId}/rematch/{playerId} {
+  allow read:   if request.auth != null;
+  allow create: if request.auth != null && request.auth.uid == playerId;
+  allow delete: if request.auth != null && request.auth.uid == playerId;
+}
+```
 
 ---
 
