@@ -70,6 +70,14 @@ const BannedWords = {
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.17',
+    label: 'v1.17: Smarter Question Selection',
+    date: 'March 2026',
+    changes: [
+      'Questions you have already hosted are deprioritised per host, not per device — two people using the same device as host now each get independent repeat-avoidance.',
+    ],
+  },
+  {
     version: '1.18',
     label: 'v1.18: Security',
     date: 'March 2026',
@@ -317,11 +325,17 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 // ============================================================
 //  QUESTION BANK  (localStorage)
 // ============================================================
-//  Structure: fq_question_bank = { "topic||diff": [ {question,options,correct,
-//             explanation,topic,difficulty,seenDate:null|"YYYY-MM-DD"}, ... ] }
+//  Shared bank:   fq_question_bank = { "topic||diff": [ {question,options,correct,
+//                 explanation,topic,difficulty}, ... ] }
+//  Per-host seen: fq_seen_{uid}    = { "topic||diff": ["questionText", ...] }
+//
+//  Seen history is scoped to the host's Firebase anonymous UID so that two
+//  people who take turns hosting on the same device each get independent
+//  repeat-avoidance. The shared bank stores question content for all users.
 
 const QuestionBank = {
   _key: 'fq_question_bank',
+  _seenKey(uid) { return `fq_seen_${uid}`; },
 
   load() {
     try { return JSON.parse(localStorage.getItem(this._key) || '{}'); }
@@ -330,6 +344,15 @@ const QuestionBank = {
 
   save(bank) {
     localStorage.setItem(this._key, JSON.stringify(bank));
+  },
+
+  loadSeen(uid) {
+    try { return JSON.parse(localStorage.getItem(this._seenKey(uid)) || '{}'); }
+    catch { return {}; }
+  },
+
+  saveSeen(seenData, uid) {
+    localStorage.setItem(this._seenKey(uid), JSON.stringify(seenData));
   },
 
   _bankKey(topic, difficulty) {
@@ -382,19 +405,24 @@ const QuestionBank = {
   },
 
   /** Return up to `count` questions for topic+difficulty.
-   *  Priority order: unseen → seen → low-score (score < 0 last). */
-  get(topic, difficulty, count) {
-    const bank    = this.load();
-    const key     = this._bankKey(topic, difficulty);
-    const pool    = bank[key] || [];
+   *  Priority order: unseen by this host → seen by this host → low-score last.
+   *  Pass the host's Firebase UID so seen history is scoped per host. */
+  get(topic, difficulty, count, uid) {
+    const bank = this.load();
+    const key  = this._bankKey(topic, difficulty);
+    const pool = bank[key] || [];
     if (pool.length === 0) return [];
 
-    const isBad = q => (q.score || 0) < 0;
+    const seenSet = uid
+      ? new Set((this.loadSeen(uid)[key] || []).map(t => t.toLowerCase().trim()))
+      : new Set();
 
-    const unseen  = pool.filter(q => !q.seenDate && !isBad(q));
-    const seen    = pool.filter(q =>  q.seenDate  && !isBad(q))
-      .sort((a, b) => new Date(a.seenDate) - new Date(b.seenDate));
-    const bad     = pool.filter(isBad);
+    const isBad  = q => (q.score || 0) < 0;
+    const isSeen = q => seenSet.has(q.question.toLowerCase().trim());
+
+    const unseen = pool.filter(q => !isSeen(q) && !isBad(q));
+    const seen   = pool.filter(q =>  isSeen(q) && !isBad(q));
+    const bad    = pool.filter(isBad);
 
     // Shuffle unseen for variety
     for (let i = unseen.length - 1; i > 0; i--) {
@@ -424,17 +452,16 @@ const QuestionBank = {
     this.save(bank);
   },
 
-  /** Mark a list of question texts as seen today for this topic+difficulty. */
-  markSeen(topic, difficulty, questionTexts) {
-    const bank = this.load();
-    const key  = this._bankKey(topic, difficulty);
-    const pool = bank[key] || [];
-    const textSet = new Set(questionTexts.map(t => t.toLowerCase().trim()));
-    pool.forEach(q => {
-      if (textSet.has(q.question.toLowerCase().trim())) q.seenDate = todayStr();
-    });
-    bank[key] = pool;
-    this.save(bank);
+  /** Record that this host has seen these questions for topic+difficulty.
+   *  Requires the host's Firebase UID to scope history per host. */
+  markSeen(topic, difficulty, questionTexts, uid) {
+    if (!uid) return;
+    const key      = this._bankKey(topic, difficulty);
+    const seenData = this.loadSeen(uid);
+    const existing = new Set((seenData[key] || []).map(t => t.toLowerCase().trim()));
+    questionTexts.forEach(t => existing.add(t.toLowerCase().trim()));
+    seenData[key]  = [...existing];
+    this.saveSeen(seenData, uid);
   },
 };
 
@@ -724,13 +751,15 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
   try {
     await ensureAuth();
 
+    const uid = state.userId;
+
     // 1. Check local bank first (fast, no network)
-    let questions = QuestionBank.get(topic, difficulty, numQ);
+    let questions = QuestionBank.get(topic, difficulty, numQ, uid);
 
     // 2. If local bank is short, pull from Firestore server bank
     if (questions.length < numQ) {
       await QuestionBank.fetchFromFirestore(topic, difficulty);
-      questions = QuestionBank.get(topic, difficulty, numQ);
+      questions = QuestionBank.get(topic, difficulty, numQ, uid);
     }
 
     // 3. If still short, generate with AI (extra questions go into the bank for later)
@@ -740,11 +769,11 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
       // Filter out any questions containing banned words before storing
       const clean = generated.filter(q => !BannedWords.containsInQuestion(q));
       QuestionBank.add(topic, difficulty, clean);
-      questions = QuestionBank.get(topic, difficulty, numQ);
+      questions = QuestionBank.get(topic, difficulty, numQ, uid);
     }
 
-    // 4. Mark selected questions as seen today
-    QuestionBank.markSeen(topic, difficulty, questions.map(q => q.question));
+    // 4. Record these questions as seen for this host
+    QuestionBank.markSeen(topic, difficulty, questions.map(q => q.question), uid);
 
     // Find a unique 4-char game code
     let code;

@@ -125,12 +125,11 @@ Firebase Anonymous Authentication already creates a stable, long-lived user ID (
 
 ---
 
-### v1.17 — Smart Question History (Per-Host)
-*Question deprioritization scoped to the device/host, not globally.*
+### ~~v1.17 — Smart Question History (Per-Host)~~ ✅ Shipped
 
-| # | Feature | Detail |
+| # | Feature | Status |
 |---|---------|--------|
-| 14 | **Host-scoped question repeat avoidance** | Questions seen while this device was the host are deprioritized in future games. Identity: Firebase anonymous UID (already persistent via IndexedDB). The existing `QuestionBank` localStorage structure already tracks `seenDate` per question — this release ties that history to the host's UID so it survives page reloads but resets if the user clears browser storage (acceptable, as the user is treated as new). Questions are never hard-excluded — they just rank lower than unseen questions of the same topic/difficulty. |
+| 14 | **Host-scoped question repeat avoidance** | ✅ Done — seen history stored in `fq_seen_{uid}` (separate from the shared question cache). Two people hosting from the same device each get independent seen history. Questions never hard-excluded — unseen come first, seen deprioritised, score < 0 last. |
 
 ---
 
