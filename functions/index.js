@@ -9,10 +9,34 @@ admin.initializeApp();
 const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
 const DIFFICULTY_PROMPTS = [
-  'easy — very straightforward, suitable for ages 6 and up, obvious answers',
-  'normal — some general knowledge needed, accessible to most people',
-  'challenging — requires solid knowledge, will stump many adults',
-  'difficult — obscure and expert-level, will challenge even well-read adults',
+  `EASY — suitable for ages 6 and up.
+Ask about well-known, concrete things: familiar animals, colours, food, popular characters, basic geography (capitals of large countries, famous landmarks), obvious real-world facts.
+The correct answer should feel satisfying and obvious once you hear it.
+Wrong answers: use other plausible things in the same category (if the answer is "lion", wrong answers should be other animals — not "a table"). At least one wrong answer should be something a young child might genuinely consider.
+AVOID: dates, large numbers, negative phrasing ("which is NOT"), anything requiring reading or prior study, questions where the answer is in the question text.
+Question format examples: "What do bees make?", "Which of these animals has a trunk?", "What colour is a fire engine?"`,
+
+  `MEDIUM — general knowledge accessible to most adults and older teens.
+Ask about things a reasonably educated person would know from school, news, or everyday culture — with enough nuance that you might second-guess yourself.
+The correct answer should feel like a fair "of course!" moment.
+Wrong answers: use common confusions and plausible near-misses. For famous inventions, include other inventors from the same era. For geography, use neighbouring countries or similarly-sized cities. Include at least one common misconception as a distractor.
+AVOID: questions where one option is obviously from a completely different category, questions with a silly or joke option.
+Question format examples: "How many bones are in the human body?", "Which planet is closest to the Sun?", "In which century was the Eiffel Tower built?"`,
+
+  `HARD — requires solid knowledge of the topic. Will stump most adults.
+Go beyond surface familiarity — reward people who have genuinely studied the topic. Ask about specific names, mechanisms, distinctions, or details within the field.
+The correct answer should be something an enthusiast knows but a casual person would likely miss.
+Wrong answers: make them genuinely competitive. Use facts from the same domain that sound equally plausible. Include at least one answer that represents a commonly-held but incorrect belief. A person who barely knows the topic should find it nearly impossible to identify the correct answer.
+AVOID: questions where the answer is obviously unlike the others in type or specificity.
+Question format examples: "Which of these was discovered first?", "What is the scientific term for...?", "Which country was the first to...?"`,
+
+  `IMPOSSIBLE — obscure and expert-level. Will challenge even well-read adults.
+Ask about edge cases, counterintuitive facts, very specific historical or scientific details, or things that sound wrong but are actually correct.
+The correct answer should be genuinely surprising — the kind of thing that makes people say "I had no idea" when they hear the explanation.
+Wrong answers: one distractor should be the "obvious" answer that most people would confidently choose but is actually wrong. All distractors should be in the same league as the correct answer — no weak or obviously silly options.
+The explanation is especially important at this level: make it reveal why the answer is true and why it is so surprising or counterintuitive.
+AVOID: questions that are merely obscure trivia with no interesting insight ("what year was X born") — impossible questions should be hard because the fact is counterintuitive or surprising, not just unknown.
+Question format examples: "Which of these widely-held beliefs is actually false?", "What was the original purpose of...?", "Which of these happened first?"`,
 ];
 
 // Words that must not appear in stored questions.
@@ -52,18 +76,23 @@ exports.generateQuestions = onCall(
       },
       body: JSON.stringify({
         model:      'claude-opus-4-6',
-        max_tokens: 2048,
+        max_tokens: 4096,
         messages: [{
           role:    'user',
           content: `Create ${count} multiple-choice quiz questions about "${topic}".
 
-Difficulty level: ${diffPrompt}
+Difficulty level:
+${diffPrompt}
 
 Requirements:
 - 4 answer choices per question
-- One clearly correct answer
-- Brief, cheerful explanation for why the answer is correct (1-2 sentences)
-- Match the difficulty level precisely — don't make hard questions easy or vice versa
+- Exactly one correct answer
+- A brief explanation (1-2 sentences) for why the answer is correct — make it interesting, not just a restatement
+- All 4 options must be the same "type" (all countries, all people, all numbers, etc.) — never mix categories
+- Wrong answers must be plausible to someone who knows the topic a little — never silly or obviously wrong
+- Vary the question format — do not start every question with "What is..." or "Which of the following..."
+- Distribute correct answers across all four positions (0, 1, 2, 3) roughly evenly across the set
+- Never put the answer in the question text
 
 Return ONLY a valid JSON array — no markdown, no explanation, just the JSON:
 [
