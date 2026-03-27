@@ -198,6 +198,62 @@ match /sessions/{sessionId}/rematch/{playerId} {
 
 ---
 
+## Long-Term Roadmap
+
+These are not yet versioned or fully designed. Captured here to preserve the vision.
+
+---
+
+### User Tiers & Authentication
+*Foundation for achievements, customization, and monetisation. Everything below this depends on it.*
+
+Anonymous play always works — no account required to join or host. Logged-in tiers unlock additional features:
+
+| Tier | Description |
+|------|-------------|
+| **Anonymous** | Default. No account. Can play fully but earns nothing persistent. |
+| **User** | Free account. Persistent identity, can earn achievements. |
+| **Subscriber** | Paid tier. Unlocks player card customisation and premium cosmetics. |
+| **Founder** | Special early-supporter tier. Granted manually or via code. Full subscriber perks + a permanent Founder badge. |
+
+Identity approach TBD — likely Firebase Auth (Google/email) layered on top of the existing anonymous auth session.
+
+---
+
+### Achievement System
+*Logged-in users only. Achievements are permanent and tied to account.*
+
+Examples (not final): first win, win 10 games, host 5 games, get every question right in a game, play with 6+ people, answer in under 3 seconds, etc. Achievements surface on the player card and final scores screen. Design and full list TBD.
+
+---
+
+### Player Cards & Customisation
+*Subscriber tier and above. Players have a persistent card shown on the lobby and leaderboard.*
+
+Customisable elements TBD — likely includes avatar/icon, card colour or border, title/badge. Some elements unlocked by reaching achievements; others by subscriber status; others by special code entry.
+
+---
+
+### Unlockable Cosmetics
+*Earned through gameplay, achievements, or special codes.*
+
+Codes can be distributed at events, embedded in merch, or given as rewards. Unlocks are tied to the logged-in account and persist across devices. Items TBD — could include exclusive card frames, icons, titles, or animated effects.
+
+---
+
+### UI Skins
+*User-selectable visual themes. The current UI becomes the "OG" skin.*
+
+| Skin | Description |
+|------|-------------|
+| **OG** | Current design. Always available. |
+| **Skeuomorphic Mode** | Rich textures, depth, physical feel — buzzers, felt tables, worn leather, etc. |
+| *(future)* | Additional skins TBD — could be seasonal, subscriber-exclusive, or unlockable. |
+
+Skin selection persists per account (logged-in) or per device (anonymous).
+
+---
+
 ## Ungrouped / Future Ideas
 - Dark mode
 - Emoji reactions during questions (👍 😱 🤔)
