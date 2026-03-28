@@ -688,6 +688,7 @@ function renderLeaderboard(containerId, players) {
 // ----- HOME -----
 function showHome() {
   cleanup();
+  localStorage.removeItem('fq_session');
   state.sessionId = null;
   state.isHost    = false;
   showScreen('screen-home');
@@ -838,6 +839,9 @@ async function cancelGame() {
 function showLobbyHost() {
   cleanup();
   showScreen('screen-lobby-host');
+  localStorage.setItem('fq_session', JSON.stringify({
+    sessionId: state.sessionId, displayName: state.displayName, isHost: true, uid: state.userId,
+  }));
 
   document.getElementById('game-code-display').textContent = state.sessionId;
 
@@ -931,6 +935,9 @@ async function joinGame(playerName, code) {
       joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
+    localStorage.setItem('fq_session', JSON.stringify({
+      sessionId: code, displayName: playerName, isHost: false, uid: state.userId,
+    }));
     showLobbyPlayer();
   } catch (err) { showError(`Could not join: ${err.message}`); }
 }
@@ -1247,6 +1254,7 @@ async function showResults(sessionData) {
 // ----- FINAL -----
 async function showFinal() {
   cleanup();
+  localStorage.removeItem('fq_session');
   showScreen('screen-final');
 
   const pSnap   = await db.collection('sessions').doc(state.sessionId).collection('players').get();
@@ -1263,6 +1271,43 @@ async function showFinal() {
   playAgainBtn.style.display = state.isHost ? 'block' : 'none';
   playAgainBtn.onclick = () => { cleanup(); state.sessionId = null; state.isHost = false; showHostSetup(); };
   document.getElementById('home-btn').onclick = () => showHome();
+}
+
+// ============================================================
+//  REJOIN
+// ============================================================
+
+async function tryRejoin() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem('fq_session')); } catch { return false; }
+  if (!saved?.sessionId) return false;
+
+  await ensureAuth();
+  if (state.userId !== saved.uid) { localStorage.removeItem('fq_session'); return false; }
+
+  let snap;
+  try {
+    const sessionRef = db.collection('sessions').doc(saved.sessionId);
+    snap = await sessionRef.get();
+    if (!snap.exists) { localStorage.removeItem('fq_session'); return false; }
+    const playerSnap = await sessionRef.collection('players').doc(state.userId).get();
+    if (!playerSnap.exists) { localStorage.removeItem('fq_session'); return false; }
+  } catch { return false; }
+
+  state.sessionId        = saved.sessionId;
+  state.displayName      = saved.displayName;
+  state.isHost           = saved.isHost;
+  state.questionFeedback = {};
+
+  const session = snap.data();
+  const terminal = new Set(['finished', 'ended-manual', 'ended-auto']);
+
+  if (terminal.has(session.status)) { await showFinal(); return true; }
+  if (session.status === 'lobby')   { state.isHost ? showLobbyHost() : showLobbyPlayer(); return true; }
+  if (session.status === 'question') { showQuestion(session); return true; }
+  if (session.status === 'results')  { showResults(session);  return true; }
+
+  return false;
 }
 
 // ============================================================
@@ -1290,8 +1335,9 @@ async function init() {
   catch (e) { console.error('Firebase init failed:', e); return; }
 
   const code = new URLSearchParams(location.search).get('code');
-  if (code) showJoin();
-  else showHome();
+  if (code) { showJoin(); return; }
+  const rejoined = await tryRejoin();
+  if (!rejoined) showHome();
 }
 
 // ============================================================

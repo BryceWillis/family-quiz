@@ -40,15 +40,11 @@
 
 ---
 
-### v1.13 — Session Resilience (Rejoin)
-*More complex — requires persistent session awareness and reconnect logic.*
+### ~~v1.13 — Session Resilience (Rejoin)~~ ✅ Shipped
 
-| # | Feature | Detail |
+| # | Feature | Status |
 |---|---------|--------|
-| 6 | **Rejoin game in progress** | If a player navigates away, closes the tab, or loses connection, they can return to the home URL or the game-specific share link and be dropped back into the active game automatically. They miss points for any questions that passed while they were gone. If a question is currently in progress when they rejoin, they wait on a "rejoining" screen until the host advances to the next question. If the session has moved to `finished`, they are shown the final scores screen. |
-
-**Identity approach for rejoin:**
-Firebase Anonymous Authentication already creates a stable, long-lived user ID (stored in the browser's IndexedDB by the Firebase SDK). This persists across page refreshes and browser restarts until the user clears their browser data. No additional cookie needed — `auth.currentUser.uid` is the persistent device-level identity. On app load, we check localStorage for `{ sessionId, gameCode }` and verify the session is still active in Firestore with that UID still in the players subcollection.
+| 6 | **Rejoin game in progress** | ✅ Done — session saved to `fq_session` in localStorage on join/host. On reload, `tryRejoin()` checks the session is still active and the player doc still exists, then navigates directly to the correct screen (lobby, question, results, or final). Cleared on showHome() and showFinal(). |
 
 ---
 
@@ -251,6 +247,32 @@ Codes can be distributed at events, embedded in merch, or given as rewards. Unlo
 | *(future)* | Additional skins TBD — could be seasonal, subscriber-exclusive, or unlockable. |
 
 Skin selection persists per account (logged-in) or per device (anonymous).
+
+---
+
+### Battle Mode
+*Competitive layer on top of the standard game. Mechanics TBD.*
+
+Answering questions correctly builds a meter. When the meter fills, the player can unleash a challenge on a single opponent or all other players. Challenges are UI disruptions designed to make answering harder — examples:
+
+| Challenge | Effect |
+|-----------|--------|
+| **Shake** | Screen shakes continuously for a few seconds |
+| **Flip** | Screen flips upside down for the duration of a question |
+| **Fog** | Translucent overlay obscures the question/answers |
+| **Rain** | Animated raindrops fall across the screen |
+| *(future)* | Additional challenges TBD |
+
+Open design questions: meter fill rate, how long effects last, whether effects stack, whether the target can see who attacked them, opt-in vs default mode.
+
+---
+
+### Battle Pass
+*Seasonal progression system. Earns points through play to unlock cosmetics on a track.*
+
+Each battle pass (OG and future seasons) has a linear unlock track. Players earn points by playing games — wins, correct answers, streaks, etc. Points advance position on the track, unlocking rewards at each milestone.
+
+Reward types (examples): player card backgrounds, card effects (animated borders, glows), titles, icons. Some slots on the track are free-tier; premium slots require subscriber status or battle pass purchase. Past battle passes expire but earned items are kept permanently.
 
 ---
 
