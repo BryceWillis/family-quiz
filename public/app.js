@@ -70,6 +70,22 @@ const BannedWords = {
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.19',
+    label: 'v1.19: Bug Fixes & Polish',
+    date: 'March 2026',
+    changes: [
+      'Rejoin a game automatically after page reload or accidental disconnect.',
+      'Fixed Next Question button getting permanently stuck when a network error occurred.',
+      'Fixed host browser refresh dropping back to the home screen instead of rejoining.',
+      'Removed Recent Games from the round results screen.',
+      'Question screen buttons no longer overflow off-screen on mobile.',
+      'Question header no longer overlaps the phone status bar on iPhone.',
+      'End Game button on results screen is now properly aligned below Next Question.',
+      'Generation screen now shows a message if Claude is taking longer than usual.',
+      'Improved question quality at each difficulty level with more specific guidance.',
+    ],
+  },
+  {
     version: '1.17',
     label: 'v1.17: Smarter Question Selection',
     date: 'March 2026',
@@ -755,6 +771,12 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
     `"${topic}" · ${DIFFICULTY_LABELS[difficulty]}`;
   GeneratingAnimation.start();
 
+  // If Claude takes longer than 65 s, reassure the host it's still working
+  const slowMsgTimer = setTimeout(() => {
+    const el = document.getElementById('generating-status');
+    if (el) el.textContent = "Still thinking… Claude's working hard on this one.";
+  }, 65000);
+
   try {
     await ensureAuth();
 
@@ -819,9 +841,11 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
         joinedAt:                firebase.firestore.FieldValue.serverTimestamp(),
       });
 
+    clearTimeout(slowMsgTimer);
     GeneratingAnimation.stop();
     showLobbyHost();
   } catch (err) {
+    clearTimeout(slowMsgTimer);
     console.error(err);
     GeneratingAnimation.stop();
     showScreen('screen-host-setup');
@@ -1259,8 +1283,6 @@ async function showResults(sessionData) {
     else if (data.status === 'finished' || data.status === 'ended-manual') { cleanup(); showFinal(); }
   });
   state.unsubscribers.push(unsub);
-
-  renderRecentSessions('recent-sessions-results');
 }
 
 // ----- FINAL -----

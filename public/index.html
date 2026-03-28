@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Showdown Live! 🎉</title>
 
   <!-- Favicon -->
@@ -11,7 +11,7 @@
   <!-- iPhone / iPad home screen icon -->
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Showdown Live">
 
   <!-- Open Graph (iMessage, WhatsApp, Telegram, Slack, etc.) -->
@@ -236,13 +236,15 @@
         <button id="tts-repeat-btn" class="btn btn-tts">
           🔊 Read Aloud
         </button>
-        <div class="feedback-row">
-          <button id="feedback-up-q" class="btn btn-small btn-skip" title="Good question">👍</button>
-          <button id="feedback-down-q" class="btn btn-small btn-skip" title="Bad question">👎</button>
-        </div>
-        <div id="host-q-panel" class="host-panel" style="display:none">
-          <button id="skip-btn" class="btn btn-small btn-skip">⏩ Skip Round</button>
-          <button id="end-game-btn-q" class="btn btn-small btn-end">🛑 End Game</button>
+        <div class="question-footer-controls">
+          <div class="feedback-row">
+            <button id="feedback-up-q" class="btn btn-small btn-skip" title="Good question">👍</button>
+            <button id="feedback-down-q" class="btn btn-small btn-skip" title="Bad question">👎</button>
+          </div>
+          <div id="host-q-panel" class="host-panel" style="display:none">
+            <button id="skip-btn" class="btn btn-small btn-skip">⏩ Skip Round</button>
+            <button id="end-game-btn-q" class="btn btn-small btn-end">🛑 End Game</button>
+          </div>
         </div>
       </div>
     </div>
@@ -277,7 +279,6 @@
       <div id="player-waiting-msg" class="waiting-pulse" style="display:none">
         ⏳ Waiting for host to continue…
       </div>
-      <div id="recent-sessions-results" class="recent-sessions"></div>
     </div>
   </div>
 

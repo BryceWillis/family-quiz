@@ -1,140 +1,139 @@
-# Family Quiz 🎉
+# Showdown Live 🎉
 
-A real-time multiplayer quiz game for the whole family. A host creates a game, players join on their own devices, and everyone answers AI-generated questions at the same time. Fun, fast, and works great across all ages.
+Real-time multiplayer quiz for families and groups. A host picks a topic, AI generates the questions, everyone answers on their own device, and a live leaderboard settles the score.
+
+**Live:** [family-quiz-9815.web.app](https://family-quiz-9815.web.app)
 
 ---
 
 ## Features
 
-- **AI-generated questions** — Claude generates fresh multiple-choice questions on any topic you choose
-- **Real-time multiplayer** — All players see questions and scores live, synced via Firestore
-- **Use your own name** — Players enter their name when joining; a 🎲 button fills in a random silly name if you want one
-- **Difficulty levels** — Easy, Medium, Difficult, and Impossible
-- **Flexible timer** — Choose 20 / 30 / 45 / 60 seconds per question, or pick "No Timer" for a relaxed pace
-- **Scoring modes** — Equal points (100 pts per correct answer) or Speed Bonus (faster answers score up to 1000 pts)
-- **Question bank** — Questions are cached locally so the AI isn't called for topics you've already played
-- **Text-to-speech** — Read questions aloud for younger or emergent readers (manual toggle, stop any time)
-- **Correct answer feedback** — Green card when you got it right, red card when you got it wrong
-- **Shareable game link** — Join by 4-character code or a direct URL
-- **Live leaderboard** — Updated scores after every question and a final winner reveal
-- **Recent games panel** — Home screen and results screen show the last 5 games with topic, status, and player count
+- **AI-generated questions** — Claude generates fresh questions on any topic; cached in Firestore so repeat topics are instant
+- **Real-time multiplayer** — All players see questions and scores live via Firestore listeners
+- **Difficulty levels** — Easy, Medium, Hard, Impossible
+- **Timer options** — 20 / 30 / 45 / 60 seconds per question, or No Timer
+- **Scoring modes** — Flat 100 pts per correct answer, or Speed Bonus (100–1000 pts based on how fast you answered)
+- **Question bank** — Questions cached locally and server-side; seen questions are deprioritised per host
+- **Question feedback** — 👍/👎 on every question; poor-rated questions are deprioritised automatically
+- **Text-to-speech** — Reads questions aloud with word highlighting; manual toggle
+- **Rejoin** — Players who disconnect or refresh are dropped back into the active game automatically
+- **Host controls** — Skip round, end game early, start next question
+- **Banned word list** — Inappropriate topics and names silently redirected
+- **Shareable link** — Join by 4-character code or direct URL
+- **Recent games panel** — Home screen shows the last 5 games with topic, status, and player count
 - **What's New** — Version history accessible from the home screen
-- **Play Again** — Host can restart a new game with the same group
 
 ---
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
-|---|---|
+|-------|------------|
 | Frontend | Vanilla HTML / CSS / JavaScript (no build step) |
 | Hosting | Firebase Hosting |
 | Database | Cloud Firestore (real-time) |
 | Auth | Firebase Anonymous Authentication |
-| AI | Anthropic Claude API via Firebase Cloud Functions |
+| Backend | Cloud Functions v2 (Node 20) |
+| AI | Anthropic Claude API (`claude-opus-4-6`) |
 | Analytics | Firebase Analytics (Google Analytics 4) |
 
 ---
 
 ## Setup
 
-### 1. Prerequisites
+### Prerequisites
 
-- [Node.js](https://nodejs.org/) (for Firebase CLI)
-- [Firebase CLI](https://firebase.google.com/docs/cli): `npm install -g firebase-tools`
+- Node.js 20+
+- Firebase CLI: `npm install -g firebase-tools`
 - An [Anthropic API key](https://console.anthropic.com/)
 
-### 2. Create a Firebase Project
+### Create a Firebase project
 
-1. Go to [console.firebase.google.com](https://console.firebase.google.com) and create a new project
-2. Enable **Firestore Database** (start in production mode)
-3. Enable **Authentication** → Sign-in method → **Anonymous**
-4. Enable **Google Analytics** when prompted (or add it later under Analytics in the sidebar)
-5. Enable **Hosting**
-6. Enable **Functions** (requires the Blaze pay-as-you-go plan)
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) and create a project
+2. Enable **Firestore Database** (production mode)
+3. Enable **Authentication** → Anonymous sign-in
+4. Enable **Hosting**
+5. Enable **Functions** (requires Blaze pay-as-you-go plan)
 
-### 3. Connect This Repo to Your Project
+### Connect and configure
 
 ```bash
 firebase login
-firebase use --add   # select your project
+firebase use --add          # select your project
+cd functions && npm install && cd ..
 ```
 
-### 4. Store Your Anthropic API Key as a Secret
-
-The API key lives in Google Cloud Secret Manager — it is never exposed to the browser or visible in network traffic.
+### Store the Anthropic API key as a secret
 
 ```bash
 firebase functions:secrets:set ANTHROPIC_API_KEY
 # paste your key when prompted
 ```
 
-### 5. Install Cloud Function Dependencies
+The key is stored in Google Cloud Secret Manager and injected at runtime — never exposed to the browser.
 
-```bash
-cd functions
-npm install
-cd ..
-```
-
-### 6. Deploy
+### Deploy
 
 ```bash
 firebase deploy
 ```
 
-The app will be live at your Firebase Hosting URL (e.g. `https://your-project.web.app`).
-
-> **First deploy note:** The Cloud Build service account needs the `Cloud Build Service Account` IAM role. If the functions deploy fails with a permissions error, grant `roles/cloudbuild.builds.builder` to `<project-number>@cloudbuild.gserviceaccount.com` in [GCP IAM](https://console.cloud.google.com/iam-admin/iam), then redeploy.
+> **First deploy note:** If functions deployment fails with a permissions error, grant `roles/cloudbuild.builds.builder` to `<project-number>@cloudbuild.gserviceaccount.com` in [GCP IAM](https://console.cloud.google.com/iam-admin/iam), then redeploy.
 
 ---
 
 ## Security
 
-- The Anthropic API key is stored in **Google Cloud Secret Manager** and injected into the Cloud Function at runtime — it never touches the browser or transit
-- All Firestore reads and writes require a signed-in user (anonymous auth counts)
-- The Cloud Function validates all inputs before calling the AI API
+- **Firestore rules** — Session state writable only by host UID; player scores writable only by host; question bank read-only for clients (all writes via Cloud Functions admin SDK)
+- **App Check** — reCAPTCHA v3 protection on Cloud Functions (activation placeholder in `app.js`; requires Firebase console steps)
+- **XSS** — All user-supplied content passed through `escapeHtml()` before any `innerHTML` use
+- **API key** — Anthropic key in Google Cloud Secret Manager; never in client code or network traffic
+- **Anonymous auth** — All Firestore reads/writes require a signed-in user
 
 ---
 
-## How to Play
+## How to play
 
-1. **Host** opens the app, clicks "Host a Game", enters a topic, difficulty, number of questions, timer setting, and scoring mode
-2. **Players** click "Join a Game" and enter the 4-character game code (or use the share link)
-3. Host starts the game from the lobby once everyone has joined
-4. All players answer each question before the timer runs out (or at their own pace with No Timer)
-5. Correct/wrong feedback and scores are shown after each round
-6. The host advances to the next question
-7. Final scores and winner are revealed at the end
-
-### Scoring Modes
-
-| Mode | Points |
-|---|---|
-| Equal points | 100 pts for every correct answer, regardless of speed |
-| Speed bonus | Correct answers score 100–1000 pts based on how fast you answered |
-
-Speed bonus requires a timed game (any option other than "No Timer").
+1. **Host** opens the app, taps "Host a Game", enters a topic, difficulty, question count, timer, and scoring mode
+2. **Players** tap "Join a Game" and enter the 4-character code (or tap the share link)
+3. Host starts the game from the lobby
+4. All players answer each question simultaneously
+5. Results and scores shown after each round; host advances to the next question
+6. Final leaderboard and winner revealed at the end
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 public/
   index.html      — App shell and all screen markup
-  app.js          — All game logic
-  style.css       — Styles
+  app.js          — All client-side game logic
+  style.css       — All styles
 functions/
-  index.js        — Cloud Function: generateQuestions (calls Anthropic API)
+  index.js        — Cloud Functions: generateQuestions, submitVote, cleanupOldSessions
   package.json    — Node 20 dependencies
 firestore.rules   — Firestore security rules
 firebase.json     — Firebase project config
-CHANGELOG.md      — Version history
+BACKLOG.md        — Planned features and long-term roadmap
 ```
 
 ---
 
 ## Development
 
-No build process — edit `public/` files and run `firebase deploy --only hosting` to push changes live. To also redeploy the Cloud Function, run `firebase deploy` (or `firebase deploy --only functions`).
+No build process. Edit files in `public/` and deploy:
+
+```bash
+# Hosting only (client changes)
+firebase deploy --only hosting
+
+# Functions only
+firebase deploy --only functions
+
+# Rules only
+firebase deploy --only "firestore:rules"
+
+# Everything
+firebase deploy
+```
