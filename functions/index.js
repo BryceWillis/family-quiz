@@ -47,7 +47,7 @@ function questionContainsBannedWord(q) {
 }
 
 exports.generateQuestions = onCall(
-  { secrets: [anthropicKey], region: 'us-east1' },
+  { secrets: [anthropicKey], region: 'us-east1', timeoutSeconds: 120 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be signed in');

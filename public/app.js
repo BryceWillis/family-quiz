@@ -639,6 +639,12 @@ const TTS = {
 // ============================================================
 
 async function ensureAuth() {
+  // Wait for Firebase to restore persisted auth state from IndexedDB.
+  // auth.currentUser is null for a brief moment on page load even if the
+  // user was previously signed in — onAuthStateChanged fires once when ready.
+  await new Promise(resolve => {
+    const unsub = auth.onAuthStateChanged(user => { unsub(); resolve(user); });
+  });
   if (auth.currentUser) { state.userId = auth.currentUser.uid; return; }
   const cred = await auth.signInAnonymously();
   state.userId = cred.user.uid;
@@ -1213,22 +1219,28 @@ async function showResults(sessionData) {
 
     nextBtn.onclick = async () => {
       nextBtn.disabled = true;
-      if (isLast) {
-        await sessionRef.update({ status: 'finished' });
-      } else {
-        const pSnap2 = await sessionRef.collection('players').get();
-        const batch  = db.batch();
-        pSnap2.docs.forEach(doc => batch.update(doc.ref, {
-          answeredCurrentQuestion: false, currentAnswer: -1, lastAnswerCorrect: null,
-        }));
-        await batch.commit();
-        await sessionRef.update({
-          status: 'question',
-          currentQuestionIndex: qIdx + 1,
-          questionStartTime: firebase.firestore.FieldValue.serverTimestamp(),
-        });
+      try {
+        if (isLast) {
+          await sessionRef.update({ status: 'finished' });
+        } else {
+          const pSnap2 = await sessionRef.collection('players').get();
+          const batch  = db.batch();
+          pSnap2.docs.forEach(doc => batch.update(doc.ref, {
+            answeredCurrentQuestion: false, currentAnswer: -1, lastAnswerCorrect: null,
+          }));
+          await batch.commit();
+          await sessionRef.update({
+            status: 'question',
+            currentQuestionIndex: qIdx + 1,
+            questionStartTime: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        // Navigation for host is handled by the watcher below — same as player
+      } catch (err) {
+        console.error('Next question failed:', err);
+        nextBtn.disabled = false;
+        showError('Could not advance to next question. Please try again.');
       }
-      // Navigation for host is handled by the watcher below — same as player
     };
 
     document.getElementById('end-game-btn-r').onclick = cancelGame;
