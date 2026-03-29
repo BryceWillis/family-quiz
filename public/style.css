@@ -31,10 +31,17 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  /* Cover the notch/status-bar area with the gradient on every screen */
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  background-attachment: fixed;
+  min-height: 100%;
+}
 html, body {
   height: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  background-attachment: fixed;
   min-height: 100vh;
   color: var(--text);
 }
@@ -52,7 +59,7 @@ html, body {
 .screen-inner {
   max-width: 520px;
   margin: 0 auto;
-  padding: 24px 20px 40px;
+  padding: calc(24px + env(safe-area-inset-top)) 20px 40px;
 }
 .screen-inner.center {
   display: flex;
@@ -61,7 +68,7 @@ html, body {
   text-align: center;
   min-height: 100vh;
   justify-content: center;
-  padding-top: 40px;
+  padding-top: max(40px, calc(20px + env(safe-area-inset-top)));
 }
 
 h2 {

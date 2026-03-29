@@ -899,6 +899,17 @@ function showLobbyHost() {
   });
   state.unsubscribers.push(unsub);
 
+  document.getElementById('cancel-lobby-btn').onclick = async () => {
+    try {
+      await sessionRef.update({ status: 'ended-manual', endedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } catch (e) { console.warn('cancel lobby failed:', e); }
+    localStorage.removeItem('fq_session');
+    cleanup();
+    state.sessionId = null;
+    state.isHost = false;
+    showHome();
+  };
+
   document.getElementById('start-btn').onclick = async () => {
     document.getElementById('start-btn').disabled = true;
     const pSnap = await sessionRef.collection('players').get();

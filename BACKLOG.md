@@ -186,11 +186,81 @@ match /sessions/{sessionId}/rematch/{playerId} {
 
 ---
 
+### v1.22 — Model Routing by Difficulty
+*Use a faster/cheaper model for easy questions, reserve the full model for hard ones.*
+
+Route `generateQuestions` calls based on difficulty level:
+
+| Difficulty | Model | Rationale |
+|------------|-------|-----------|
+| Easy (0) | `claude-haiku-4-5` | Pattern-match facts, quality is fine, much faster |
+| Medium (1) | `claude-haiku-4-5` | General knowledge still well within Haiku's capability |
+| Hard (2) | `claude-opus-4-6` | Nuanced distractors and competitive wrong answers need the stronger model |
+| Impossible (3) | `claude-opus-4-6` | Counterintuitive facts and expert-level reasoning require it |
+
+One-line change in the Cloud Function — swap the `model` field based on the `difficulty` param. Should be tried and benchmarked before shipping to confirm the quality tradeoff is acceptable at Haiku for Medium.
+
+---
+
+### v1.23 — Fast Start (Progressive Question Loading)
+*Start the game as soon as a minimum number of questions are ready, rather than waiting for the full set.*
+
+**Behaviour:**
+1. Host taps Generate. The Cloud Function requests the full question count from Claude.
+2. As soon as 3 questions are parsed and stored, the session is created and the lobby opens — the generating screen disappears.
+3. The remaining questions continue arriving in the background and are appended to the session's question list in Firestore.
+4. The game plays normally. By the time the first 3 rounds are done, all remaining questions are ready.
+
+**Open design questions:**
+- If background generation fails partway through, what happens when the game reaches the last available question? Options: end the game early, show an error and let the host skip to final scores, or auto-generate one more on the fly.
+- Does the question count shown to players ("Question 3 / 10") reflect the final expected count or just what's loaded so far?
+- Claude's API doesn't stream structured JSON reliably — most likely implementation is two sequential requests: a fast first batch of 3, then a background request for the remainder. Needs benchmarking to confirm the UX improvement is worth the added complexity.
+
+---
+
+### v1.24 — Semantic Question Deduplication (Embeddings)
+*Prevent near-duplicate questions from accumulating in the bank as it grows to hundreds of questions per topic.*
+
+**Problem:** The current deduplication check uses normalized text matching, which only catches exact or near-exact wording. Claude frequently generates semantically identical questions across separate generation calls ("Which planet is closest to the Sun?" vs "What is the nearest planet to the Sun?"). At scale this degrades the question bank significantly.
+
+**Proposed approach:**
+1. When a question is stored, generate an embedding vector for the question text
+2. Store the embedding alongside the question in Firestore
+3. Use Firestore's native vector search to find nearest neighbors for any incoming question
+4. Reject anything above a similarity threshold (e.g. 0.92 cosine similarity) before writing
+5. On write, store the new question with its embedding for future comparisons
+
+**Open questions before building:**
+- Embedding model: Anthropic embeddings via the same API key, or a dedicated model (e.g. OpenAI `text-embedding-3-small` which is very cheap)? Keeping one vendor is simpler; OpenAI's embedding model may be better optimised for this task.
+- Firestore vector search was recently GA'd — worth evaluating limits and pricing before committing.
+- Similarity threshold needs tuning — too aggressive and valid questions get rejected, too loose and duplicates slip through. Needs empirical testing.
+- Whether to run deduplication at write time (real-time, per question) or as a background cleanup job (batch, periodic).
+
+---
+
+### v1.25 — Dev Mode (Single-Player UI Testing)
+*Fast solo walkthrough of all UI states without API calls or a second device.*
+
+**Gate:** Secret tap sequence on the home screen logo — e.g. tap the logo icon 7 times rapidly. No URL param, nothing visible in the UI. Activates a "Dev Game" button on the home screen for the remainder of the session. Pattern and count TBD before building.
+
+**Behaviour:**
+- Skips Claude entirely — uses a small set of hardcoded mock questions designed to exercise specific UI states (normal question, all-correct round, all-wrong round, last question → final screen)
+- Allows starting a game with 1 player (host only)
+- Otherwise identical to a real game — same Firestore writes, same listeners, same navigation. Tests the real code paths, not a mock
+
+**Distinct from regular test games:**
+Dev mode is for fast UI walkthroughs with no API cost. Regular games on common topics (animals, geography, Pixar, etc.) should still be played intentionally to pad out the Firestore question bank — those are a valuable side effect of testing and not something dev mode replaces.
+
+**Open question:** What's the secret word? Needs to be set before building.
+
+---
+
 ## Open Questions / Decisions Needed Before Building
 
 | Item | Question |
 |------|----------|
 | v1.12 vote to kick host | When a new host is randomly assigned mid-game, do their host controls appear in-place (skip button, next button, etc.) or do we navigate them to a confirmation screen first? |
+| Easy difficulty distractors | Should Easy questions always include one obvious-wrong "foil" answer, or just ensure wrong answers are age-appropriate in their wrongness? Needs playtesting with Haiku-generated questions before changing the prompt. |
 
 ---
 
@@ -273,6 +343,14 @@ Open design questions: meter fill rate, how long effects last, whether effects s
 Each battle pass (OG and future seasons) has a linear unlock track. Players earn points by playing games — wins, correct answers, streaks, etc. Points advance position on the track, unlocking rewards at each milestone.
 
 Reward types (examples): player card backgrounds, card effects (animated borders, glows), titles, icons. Some slots on the track are free-tier; premium slots require subscriber status or battle pass purchase. Past battle passes expire but earned items are kept permanently.
+
+---
+
+## Maintenance
+
+| Item | Detail | Deadline |
+|------|--------|----------|
+| **Upgrade Cloud Functions to Node 22** | Node 20 is deprecated 2026-04-30 and decommissioned 2026-10-30. Update `engines` in `functions/package.json` and redeploy. | Before 2026-04-30 |
 
 ---
 
