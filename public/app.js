@@ -900,7 +900,7 @@ function showLobbyHost() {
   state.unsubscribers.push(unsub);
 
   const cancelBtn = document.getElementById('cancel-lobby-btn');
-  cancelBtn.onclick = () => {
+  if (cancelBtn) cancelBtn.onclick = () => {
     cancelBtn.textContent = 'Cancelling…';
     cancelBtn.disabled = true;
     const sidToCancel = state.sessionId;
