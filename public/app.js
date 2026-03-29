@@ -899,7 +899,10 @@ function showLobbyHost() {
   });
   state.unsubscribers.push(unsub);
 
-  document.getElementById('cancel-lobby-btn').onclick = () => {
+  const cancelBtn = document.getElementById('cancel-lobby-btn');
+  cancelBtn.onclick = () => {
+    cancelBtn.textContent = 'Cancelling…';
+    cancelBtn.disabled = true;
     const sidToCancel = state.sessionId;
     localStorage.removeItem('fq_session');
     cleanup();
