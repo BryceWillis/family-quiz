@@ -899,15 +899,19 @@ function showLobbyHost() {
   });
   state.unsubscribers.push(unsub);
 
-  document.getElementById('cancel-lobby-btn').onclick = async () => {
-    try {
-      await sessionRef.update({ status: 'ended-manual', endedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    } catch (e) { console.warn('cancel lobby failed:', e); }
+  document.getElementById('cancel-lobby-btn').onclick = () => {
+    const sidToCancel = state.sessionId;
     localStorage.removeItem('fq_session');
     cleanup();
     state.sessionId = null;
     state.isHost = false;
     showHome();
+    // Best-effort — mark session ended after navigating away
+    if (sidToCancel) {
+      db.collection('sessions').doc(sidToCancel)
+        .update({ status: 'ended-manual', endedAt: firebase.firestore.FieldValue.serverTimestamp() })
+        .catch(e => console.warn('cancel lobby cleanup failed:', e));
+    }
   };
 
   document.getElementById('start-btn').onclick = async () => {
