@@ -86,14 +86,6 @@ const VERSIONS = [
     ],
   },
   {
-    version: '1.17',
-    label: 'v1.17: Smarter Question Selection',
-    date: 'March 2026',
-    changes: [
-      'Questions you have already hosted are deprioritised per host, not per device — two people using the same device as host now each get independent repeat-avoidance.',
-    ],
-  },
-  {
     version: '1.18',
     label: 'v1.18: Security',
     date: 'March 2026',
@@ -102,6 +94,14 @@ const VERSIONS = [
       'Question bank is now read-only for clients — all writes go through server-side Cloud Functions.',
       'XSS: player names, topics, and answer text are now escaped before rendering.',
       'Firebase App Check added to prevent direct calls to the question-generation Cloud Function.',
+    ],
+  },
+  {
+    version: '1.17',
+    label: 'v1.17: Smarter Question Selection',
+    date: 'March 2026',
+    changes: [
+      'Questions you have already hosted are deprioritised per host, not per device — two people using the same device as host now each get independent repeat-avoidance.',
     ],
   },
   {
