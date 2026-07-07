@@ -1427,7 +1427,7 @@ async function init() {
     // Replace the placeholder with the reCAPTCHA v3 site key from:
     //   Firebase console → App Check → your web app → reCAPTCHA v3
     // Then enable enforcement: App Check dashboard → Functions → Enforce.
-    const RECAPTCHA_SITE_KEY = 'REPLACE_WITH_RECAPTCHA_V3_SITE_KEY';
+    const RECAPTCHA_SITE_KEY = '6Lcdu0gtAAAAAHnP_nfyE1yOcqebZpJOYzJQCGZm';
     if (RECAPTCHA_SITE_KEY !== 'REPLACE_WITH_RECAPTCHA_V3_SITE_KEY') {
       firebase.appCheck().activate(RECAPTCHA_SITE_KEY, true);
     }
