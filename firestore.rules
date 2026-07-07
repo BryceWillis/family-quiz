@@ -16,19 +16,33 @@ service cloud.firestore {
       match /players/{playerId} {
         allow read:   if request.auth != null;
 
-        // Each player may only create their own doc.
-        allow create: if request.auth != null && request.auth.uid == playerId;
+        // Each player may only create their own doc, only while the session
+        // is still in the lobby, and only with a pristine starting state —
+        // no joining with a pre-loaded score or answer.
+        allow create: if request.auth != null && request.auth.uid == playerId
+                      && request.resource.data.score == 0
+                      && request.resource.data.lastAnswerCorrect == null
+                      && request.resource.data.currentAnswer == -1
+                      && request.resource.data.answeredCurrentQuestion == false
+                      && request.resource.data.displayName is string
+                      && request.resource.data.displayName.size() <= 30
+                      && get(/databases/$(database)/documents/sessions/$(sessionId)).data.status
+                          == 'lobby';
 
         // The host can update any player doc (score writes, state resets).
         // A player can update only their own doc, and only the answer-submission
-        // fields — never score or lastAnswerCorrect.
+        // fields — never score or lastAnswerCorrect. If answeredAt changes it
+        // must be the server timestamp, so answer times can't be forged.
         allow update: if request.auth != null && (
           get(/databases/$(database)/documents/sessions/$(sessionId)).data.hostId
             == request.auth.uid
           ||
           (request.auth.uid == playerId
             && !request.resource.data.diff(resource.data)
-                .affectedKeys().hasAny(['score', 'lastAnswerCorrect']))
+                .affectedKeys().hasAny(['score', 'lastAnswerCorrect'])
+            && (!request.resource.data.diff(resource.data)
+                  .affectedKeys().hasAny(['answeredAt'])
+                || request.resource.data.answeredAt == request.time))
         );
 
         allow delete: if false;
