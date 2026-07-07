@@ -56,6 +56,85 @@ test('firestoreKey', async (t) => {
   });
 });
 
+function goodQuestion(overrides = {}) {
+  return {
+    question: 'What do bees make?',
+    options: ['Honey', 'Milk', 'Silk', 'Wax'],
+    correct: 0,
+    explanation: 'Bees convert nectar into honey.',
+    ...overrides,
+  };
+}
+
+test('validateQuestion', async (t) => {
+  await t.test('accepts a well-formed question', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion()), true);
+  });
+
+  await t.test('rejects 3 options', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ options: ['A', 'B', 'C'] })), false);
+  });
+
+  await t.test('rejects 5 options', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ options: ['A', 'B', 'C', 'D', 'E'] })), false);
+  });
+
+  await t.test('rejects correct=4 (out of range)', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ correct: 4 })), false);
+  });
+
+  await t.test('rejects correct="0" (string, not integer)', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ correct: '0' })), false);
+  });
+
+  await t.test('rejects non-integer correct', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ correct: 1.5 })), false);
+  });
+
+  await t.test('rejects empty question text', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ question: '   ' })), false);
+  });
+
+  await t.test('rejects an empty option string', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ options: ['Honey', '', 'Silk', 'Wax'] })), false);
+  });
+
+  await t.test('rejects missing explanation', () => {
+    assert.strictEqual(__test.validateQuestion(goodQuestion({ explanation: undefined })), false);
+  });
+
+  await t.test('rejects non-objects', () => {
+    assert.strictEqual(__test.validateQuestion(null), false);
+    assert.strictEqual(__test.validateQuestion('question'), false);
+    assert.strictEqual(__test.validateQuestion([goodQuestion()]), false);
+  });
+});
+
+test('salvageTruncatedJson', async (t) => {
+  await t.test('recovers N-1 questions from an array cut mid-object', () => {
+    const full = [goodQuestion(), goodQuestion({ question: 'Q2?' }), goodQuestion({ question: 'Q3?' })];
+    const json = JSON.stringify(full);
+    // Cut inside the last object, mid-way through its explanation string
+    const truncated = json.slice(0, json.lastIndexOf('explanation') + 20);
+    const salvaged = __test.salvageTruncatedJson(truncated);
+    assert.strictEqual(salvaged.length, 2);
+    assert.deepStrictEqual(salvaged, full.slice(0, 2));
+  });
+
+  await t.test('recovers questions when cut right after a complete object', () => {
+    const full = [goodQuestion(), goodQuestion({ question: 'Q2?' })];
+    const json = JSON.stringify(full);
+    const truncated = json.slice(0, json.lastIndexOf('}') + 1) + ','; // "…},"
+    assert.deepStrictEqual(__test.salvageTruncatedJson(truncated), full);
+  });
+
+  await t.test('returns [] for garbage', () => {
+    assert.deepStrictEqual(__test.salvageTruncatedJson('sorry, I cannot do that'), []);
+    assert.deepStrictEqual(__test.salvageTruncatedJson('{"not": "an array"}'), []);
+    assert.deepStrictEqual(__test.salvageTruncatedJson(''), []);
+  });
+});
+
 test('questionContainsBannedWord', async (t) => {
   await t.test('flags a banned word in the question text', () => {
     assert.strictEqual(__test.questionContainsBannedWord({
