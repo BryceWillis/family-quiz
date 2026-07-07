@@ -79,7 +79,7 @@ function questionContainsBannedWord(q) {
 }
 
 exports.generateQuestions = onCall(
-  { secrets: [anthropicKey], region: 'us-east1', timeoutSeconds: 120 },
+  { secrets: [anthropicKey], region: 'us-east1', timeoutSeconds: 120, maxInstances: 5 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be signed in');
@@ -202,7 +202,7 @@ The "correct" field is the 0-based index (0=first option, 1=second, 2=third, 3=f
 
 // Update upvote/downvote counts for a question in the shared bank.
 exports.submitVote = onCall(
-  { region: 'us-east1' },
+  { region: 'us-east1', maxInstances: 10 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Must be signed in');
