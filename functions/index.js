@@ -102,6 +102,7 @@ exports.generateQuestions = onCall(
     // Hard + Impossible: Opus for competitive distractors and nuanced reasoning.
     const model = difficulty <= 1 ? 'claude-haiku-4-5-20251001' : 'claude-opus-4-6';
 
+    const t0 = Date.now();
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -196,7 +197,8 @@ The "correct" field is the 0-based index (0=first option, 1=second, 2=third, 3=f
       console.warn('generateQuestions: bank storage failed:', e);
     }
 
-    return { questions: clean };
+    // generationMs + model feed the client's question_generation analytics event
+    return { questions: clean, generationMs: Date.now() - t0, model };
   }
 );
 

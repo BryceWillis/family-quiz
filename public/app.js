@@ -264,6 +264,7 @@ const state = {
   sillyName:        null,
   sessionId:        null,
   isHost:           false,
+  isLunchGame:      false,
   unsubscribers:    [],
   timerInterval:    null,
   endingQuestion:   false,
@@ -302,6 +303,7 @@ function showScreen(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
   window.scrollTo(0, 0);
+  if (id !== 'screen-home') stopFlyingPizzas();
 }
 
 function showError(msg) { alert(msg); }
@@ -500,13 +502,19 @@ const QuestionBank = {
 /** Submit or toggle a feedback vote for the current question.
  *  Handles local bank update + Firestore sync. */
 async function submitQuestionFeedback(topic, difficulty, q, clickedVote) {
-  const key    = q.question.toLowerCase().trim();
+  const key     = q.question.toLowerCase().trim();
   const oldVote = state.questionFeedback[key] || null;
   const newVote = oldVote === clickedVote ? null : clickedVote;  // tap again = undo
 
   state.questionFeedback[key] = newVote;
+
+  // Immediate cta_click so rage-clicking is visible in analytics
+  if (typeof gtag === 'function') {
+    gtag('event', 'cta_click', { button_name: clickedVote === 'up' ? 'vote_up' : 'vote_down' });
+  }
+
+  // Local bank update only — Firestore sync is deferred until round ends
   QuestionBank.updateLocalVote(topic, difficulty, q.question, oldVote, newVote);
-  QuestionBank.syncVoteToFirestore(topic, difficulty, q.question, oldVote, newVote);
   updateFeedbackUI(key);
 }
 
@@ -558,9 +566,11 @@ function wireFeedbackButtons(suffix, topic, difficulty, q) {
 
 const TTS = {
   _active: false,
+  _callId: 0,  // incremented each time a new readQuestion starts or stop() is called
 
   stop() {
     this._active = false;
+    this._callId++;  // invalidate any in-flight coroutine (iOS doesn't fire onend reliably)
     window.speechSynthesis.cancel();
     this._updateBtn();
     document.querySelectorAll('.tts-reading').forEach(el => el.classList.remove('tts-reading'));
@@ -580,16 +590,29 @@ const TTS = {
 
   _pickVoice() {
     const voices = window.speechSynthesis.getVoices();
+    const prefer = [
+      'Samantha (Enhanced)',   // macOS/iOS high-quality
+      'Google US English',     // Chrome neural — sounds very natural
+      'Microsoft Zira Desktop',// Windows female
+      'Nicky',                 // iOS en-US female
+      'Ava (Enhanced)',        // macOS enhanced female
+      'Samantha',              // macOS/iOS standard
+      'Karen',                 // Australian female
+      'Moira',                 // Irish female
+      'Tessa',                 // South African female
+    ];
+    for (const name of prefer) {
+      const v = voices.find(v => v.name === name);
+      if (v) return v;
+    }
     return (
-      voices.find(v => v.name === 'Samantha') ||
-      voices.find(v => v.name === 'Karen')    ||
       voices.find(v => v.lang === 'en-US' && v.localService) ||
       voices.find(v => v.lang.startsWith('en')) ||
       null
     );
   },
 
-  speak(text, rate = 0.85, pitch = 1.1) {
+  speak(text, rate = 0.85, pitch = 1.15) {
     return new Promise(resolve => {
       if (!this._active) { resolve(); return; } // stopped mid-sequence
       const utter = new SpeechSynthesisUtterance(text);
@@ -611,8 +634,10 @@ const TTS = {
   async readQuestion(question, options) {
     if (this._active) { this.stop(); return; }   // toggle: stop if already reading
     this._active = true;
+    const myCallId = ++this._callId;  // capture this call's ID; bail if superseded
     this._updateBtn();
     await delay(200);
+    if (this._callId !== myCallId) return;  // screen changed during delay
 
     // Highlight question card while reading the question text
     const qCard = document.querySelector('.question-card');
@@ -621,18 +646,22 @@ const TTS = {
     if (qCard) qCard.classList.remove('tts-reading');
 
     await delay(400);
+    if (this._callId !== myCallId) { this._active = false; this._updateBtn(); return; }
+
     const letters  = ['A', 'B', 'C', 'D'];
     const optBtns  = document.querySelectorAll('.option-btn');
     for (let i = 0; i < options.length; i++) {
-      if (!this._active) break;
+      if (!this._active || this._callId !== myCallId) break;  // stop() called or screen changed
       // Highlight each option button as it is being read aloud
       if (optBtns[i]) optBtns[i].classList.add('tts-reading');
       await this.speak(`${letters[i]}: ${options[i]}`);
       if (optBtns[i]) optBtns[i].classList.remove('tts-reading');
       await delay(200);
     }
-    this._active = false;
-    this._updateBtn();
+    if (this._callId === myCallId) {
+      this._active = false;
+      this._updateBtn();
+    }
   },
 
   async readResult(letterAndOption, explanation) {
@@ -683,7 +712,17 @@ async function ensureAuth() {
 async function generateQuestions(topic, count, difficulty) {
   const fn     = firebase.app().functions('us-east1').httpsCallable('generateQuestions');
   const result = await fn({ topic, count, difficulty });
-  return result.data.questions;
+  const { questions, generationMs, model } = result.data;
+  if (typeof gtag === 'function') {
+    gtag('event', 'question_generation', {
+      topic,
+      difficulty,
+      model,
+      generation_ms: generationMs,
+      question_count: questions.length,
+    });
+  }
+  return questions;
 }
 
 // ============================================================
@@ -717,18 +756,67 @@ function renderLeaderboard(containerId, players) {
 //  SCREENS
 // ============================================================
 
+// ----- FLYING PIZZAS -----
+function startFlyingPizzas() {
+  const container = document.getElementById('flying-pizzas');
+  if (!container) return;
+  container.innerHTML = '';
+  container.style.display = 'block';
+  const COUNT = 14;
+  for (let i = 0; i < COUNT; i++) {
+    const el  = document.createElement('span');
+    el.className   = 'flying-pizza';
+    el.textContent = '🍕';
+    // Distribute start positions along top edge and right edge
+    const t = i / COUNT;
+    let startLeft, startTop;
+    if (t < 0.5) {
+      startLeft = (t / 0.5) * 120;   // top edge: 0–120vw
+      startTop  = -15;
+    } else {
+      startLeft = 108;                // right edge: 0–110vh
+      startTop  = ((t - 0.5) / 0.5) * 110;
+    }
+    const size    = 1.5 + Math.random() * 2;
+    const dur     = 10  + Math.random() * 12;
+    const delay   = -(Math.random() * dur);   // negative = already mid-flight
+    const opacity = 0.12 + Math.random() * 0.15;
+    el.style.cssText = `font-size:${size}rem;left:${startLeft}vw;top:${startTop}vh;animation-duration:${dur}s;animation-delay:${delay}s;opacity:${opacity};`;
+    container.appendChild(el);
+  }
+}
+
+function stopFlyingPizzas() {
+  const container = document.getElementById('flying-pizzas');
+  if (!container) return;
+  container.style.display = 'none';
+  container.innerHTML = '';
+}
+
 // ----- HOME -----
 function showHome() {
   cleanup();
   localStorage.removeItem('fq_session');
-  state.sessionId = null;
-  state.isHost    = false;
+  state.sessionId   = null;
+  state.isHost      = false;
+  state.isLunchGame = false;
   showScreen('screen-home');
   renderRecentSessions('recent-sessions-home');
+
+  // Secret Sunday lunch mode — swap logo icon and start flying pizzas
+  const lunchMode = new Date().getDay() === 0 || new URLSearchParams(location.search).get('lunch') === '1';
+  const logoIcon  = document.querySelector('.logo-icon');
+  if (logoIcon) {
+    logoIcon.textContent  = lunchMode ? '🍕' : '🎉';
+    logoIcon.style.cursor = lunchMode ? 'pointer' : '';
+    logoIcon.onclick      = lunchMode ? () => App.showLunchHostSetup() : null;
+  }
+  if (lunchMode) startFlyingPizzas();
 }
 
 // ----- HOST SETUP -----
 function showHostSetup() {
+  if (typeof gtag === 'function') gtag('event', 'host_game_click');
   showScreen('screen-host-setup');
 
   // Difficulty slider live label
@@ -774,8 +862,92 @@ function showHostSetup() {
   };
 }
 
+// ----- LUNCH HOST SETUP -----
+function showLunchHostSetup() {
+  showScreen('screen-lunch-host-setup');
+  document.getElementById('lunch-host-form').onsubmit = async e => {
+    e.preventDefault();
+    let hostName = document.getElementById('lunch-host-name').value.trim();
+    if (!hostName) return;
+    if (BannedWords.contains(hostName)) hostName = generateSillyName();
+    await startLunchGame(hostName);
+  };
+}
+
+async function startLunchGame(hostName) {
+  showScreen('screen-generating');
+  document.getElementById('generating-topic').textContent = '🍕 School Lunch This Week';
+  GeneratingAnimation.start();
+
+  try {
+    await ensureAuth();
+    const t0  = Date.now();
+    const fn  = firebase.app().functions('us-east1').httpsCallable('getLunchMenu');
+    const result = await fn({});
+    const questions = result.data.questions;
+
+    if (typeof gtag === 'function') {
+      gtag('event', 'question_generation', {
+        topic: 'School Lunch This Week', difficulty: 0,
+        model: 'lunch_menu', generation_ms: Date.now() - t0, question_count: questions.length,
+      });
+    }
+
+    let code;
+    for (let i = 0; i < 20; i++) {
+      code = generateGameCode();
+      const existing = await db.collection('sessions').doc(code).get();
+      if (!existing.exists) break;
+    }
+
+    state.displayName      = hostName;
+    state.sessionId        = code;
+    state.isHost           = true;
+    state.isLunchGame      = true;
+    state.topic            = 'School Lunch This Week 🍕';
+    state.difficulty       = 0;
+    state.questionFeedback = {};  state.committedVotes = {};  // reset feedback state for new game
+
+    await db.collection('sessions').doc(code).set({
+      hostId:               state.userId,
+      hostName,
+      status:               'lobby',
+      currentQuestionIndex: -1,
+      topic:                'School Lunch This Week 🍕',
+      difficulty:           0,
+      questions,
+      timePerQuestion:      30,
+      scoringMode:          'flat',
+      questionStartTime:    null,
+      createdAt:            firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await db.collection('sessions').doc(code)
+      .collection('players').doc(state.userId).set({
+        displayName:             hostName,
+        score:                   0,
+        answeredCurrentQuestion: false,
+        currentAnswer:           -1,
+        lastAnswerCorrect:       null,
+        joinedAt:                firebase.firestore.FieldValue.serverTimestamp(),
+      });
+
+    GeneratingAnimation.stop();
+    showLobbyHost();
+  } catch (err) {
+    GeneratingAnimation.stop();
+    showScreen('screen-lunch-host-setup');
+    showError(`Could not load lunch menu: ${err.message}`);
+  }
+}
+
 async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoringMode) {
-  state.questionFeedback = {};  // reset feedback state for new game
+  if (typeof gtag === 'function') {
+    gtag('event', 'host_setup_submit', {
+      topic, difficulty, num_questions: numQ, time_per_q: timeQ, scoring_mode: scoringMode,
+    });
+  }
+  state.questionFeedback = {};  state.committedVotes = {};  // reset feedback state for new game
   showScreen('screen-generating');
   document.getElementById('generating-topic').textContent =
     `"${topic}" · ${DIFFICULTY_LABELS[difficulty]}`;
@@ -802,6 +974,7 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
     }
 
     // 3. If still short, generate with AI (extra questions go into the bank for later)
+    const t0 = Date.now();
     if (questions.length < numQ) {
       const needed    = numQ - questions.length;
       const generated = await generateQuestions(topic, needed + 5, difficulty);
@@ -809,6 +982,14 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
       const clean = generated.filter(q => !BannedWords.containsInQuestion(q));
       QuestionBank.add(topic, difficulty, clean);
       questions = QuestionBank.get(topic, difficulty, numQ, uid);
+    } else {
+      // Served entirely from the question bank — no AI call needed
+      if (typeof gtag === 'function') {
+        gtag('event', 'question_generation', {
+          topic, difficulty, model: 'question_bank',
+          generation_ms: Date.now() - t0, question_count: questions.length,
+        });
+      }
     }
 
     // No questions at all — don't create a broken session
@@ -838,7 +1019,9 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
     state.displayName = hostName;
     state.sessionId   = code;
     state.isHost      = true;
+    state.isLunchGame = false;
     state.topic       = topic;
+    state.difficulty  = difficulty;
 
     await db.collection('sessions').doc(code).set({
       hostId:               state.userId,
@@ -879,6 +1062,7 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
 // ----- END GAME (HOST) -----
 async function cancelGame() {
   if (!state.isHost || !state.sessionId) return;
+  if (typeof gtag === 'function') gtag('event', 'end_game', { topic: state.topic, difficulty: state.difficulty });
   try {
     await db.collection('sessions').doc(state.sessionId).update({
       status:  'ended-manual',
@@ -894,6 +1078,7 @@ function showLobbyHost() {
   showScreen('screen-lobby-host');
   localStorage.setItem('fq_session', JSON.stringify({
     sessionId: state.sessionId, displayName: state.displayName, isHost: true, uid: state.userId,
+    topic: state.topic, difficulty: state.difficulty, isLunchGame: state.isLunchGame,
   }));
 
   document.getElementById('game-code-display').textContent = state.sessionId;
@@ -909,6 +1094,9 @@ function showLobbyHost() {
       const btn = document.getElementById('copy-link-btn');
       btn.textContent = '✅ Copied!';
       setTimeout(() => { btn.textContent = '📋 Copy Link'; }, 2000);
+      if (typeof gtag === 'function') {
+        gtag('event', 'copy_invite_link', { topic: state.topic, difficulty: state.difficulty });
+      }
     });
   };
 
@@ -923,10 +1111,14 @@ function showLobbyHost() {
   state.unsubscribers.push(unsub);
 
   const cancelBtn = document.getElementById('cancel-lobby-btn');
+  if (cancelBtn) { cancelBtn.textContent = '🛑 Cancel Game'; cancelBtn.disabled = false; }
   if (cancelBtn) cancelBtn.onclick = () => {
     cancelBtn.textContent = 'Cancelling…';
     cancelBtn.disabled = true;
     const sidToCancel = state.sessionId;
+    if (typeof gtag === 'function') {
+      gtag('event', 'cancel_lobby', { topic: state.topic, difficulty: state.difficulty });
+    }
     localStorage.removeItem('fq_session');
     cleanup();
     state.sessionId = null;
@@ -943,6 +1135,11 @@ function showLobbyHost() {
   document.getElementById('start-btn').onclick = async () => {
     document.getElementById('start-btn').disabled = true;
     const pSnap = await sessionRef.collection('players').get();
+    if (typeof gtag === 'function') {
+      gtag('event', 'game_start', {
+        topic: state.topic, difficulty: state.difficulty, player_count: pSnap.size,
+      });
+    }
     const batch = db.batch();
     pSnap.docs.forEach(doc => batch.update(doc.ref, {
       score: 0, answeredCurrentQuestion: false, currentAnswer: -1, lastAnswerCorrect: null,
@@ -966,6 +1163,7 @@ function showLobbyHost() {
 
 // ----- JOIN -----
 function showJoin() {
+  if (typeof gtag === 'function') gtag('event', 'join_game_click');
   showScreen('screen-join');
   const code = new URLSearchParams(location.search).get('code');
   if (code) document.getElementById('join-code').value = code.toUpperCase();
@@ -994,9 +1192,10 @@ async function joinGame(playerName, code) {
     const session = snap.data();
     if (session.status !== 'lobby') { showError('This game has already started!'); return; }
 
-    state.displayName    = playerName;
-    state.sessionId      = code;
-    state.isHost         = false;
+    state.displayName      = playerName;
+    state.sessionId        = code;
+    state.isHost           = false;
+    state.isLunchGame      = session.topic?.includes('🍕') ?? false;
     state.questionFeedback = {};
 
     await sessionRef.collection('players').doc(state.userId).set({
@@ -1009,6 +1208,7 @@ async function joinGame(playerName, code) {
     localStorage.setItem('fq_session', JSON.stringify({
       sessionId: code, displayName: playerName, isHost: false, uid: state.userId,
     }));
+    if (typeof gtag === 'function') gtag('event', 'join_game_submit');
     showLobbyPlayer();
   } catch (err) { showError(`Could not join: ${err.message}`); }
 }
@@ -1068,6 +1268,11 @@ function showQuestion(sessionData) {
     btn.onclick = async () => {
       if (hasAnswered) return;
       hasAnswered = true;
+      // Store answer — fired as question_answered event when host advances (so vote is final)
+      state.pendingAnswer = {
+        qIdx, option: letters[i],
+        result: i === q.correct ? 'correct' : 'incorrect',
+      };
       document.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; b.classList.add('dimmed'); });
       btn.classList.remove('dimmed');
       btn.classList.add('chosen');
@@ -1084,10 +1289,17 @@ function showQuestion(sessionData) {
   });
 
   // TTS — manual only, button toggles read/stop
-  document.getElementById('tts-repeat-btn').onclick = () => TTS.readQuestion(q.question, q.options);
+  document.getElementById('tts-repeat-btn').onclick = () => {
+    if (typeof gtag === 'function') {
+      gtag('event', TTS._active ? 'read_aloud_stop' : 'read_aloud_start', { question_index: qIdx });
+    }
+    TTS.readQuestion(q.question, q.options);
+  };
 
-  // Feedback buttons (question screen)
-  wireFeedbackButtons('q', sessionData.topic, sessionData.difficulty, q);
+  // Feedback buttons (question screen) — hidden in lunch mode
+  const feedbackRowQ = document.querySelector('#screen-question .feedback-row');
+  if (feedbackRowQ) feedbackRowQ.style.display = state.isLunchGame ? 'none' : '';
+  if (!state.isLunchGame) wireFeedbackButtons('q', sessionData.topic, sessionData.difficulty, q);
 
   // Timer
   startTimer(timePerQuestion, questionStartTime, qIdx);
@@ -1096,7 +1308,11 @@ function showQuestion(sessionData) {
   const hostPanel = document.getElementById('host-q-panel');
   if (state.isHost) {
     hostPanel.style.display = 'flex';
-    document.getElementById('skip-btn').onclick = () => endQuestion(qIdx);
+    document.getElementById('skip-btn').onclick = () => {
+      TTS.stop();
+      if (typeof gtag === 'function') gtag('event', 'skip_question', { question_index: qIdx, topic: state.topic, difficulty: state.difficulty });
+      endQuestion(qIdx);
+    };
     document.getElementById('end-game-btn-q').onclick = cancelGame;
 
     // Auto-advance when ALL players have answered
@@ -1234,17 +1450,46 @@ async function showResults(sessionData) {
   const sessionRef = db.collection('sessions').doc(state.sessionId);
   const isLast     = qIdx >= questions.length - 1;
 
+  // Flush analytics + Firestore vote once when leaving the results screen
+  function flushQuestionAnalytics() {
+    const qKey      = q.question.toLowerCase().trim();
+    const finalVote = state.questionFeedback[qKey] || null;
+    const committed = (state.committedVotes || {})[qKey] || null;
+
+    // Fire question_answered now that we have the settled vote
+    if (state.pendingAnswer && state.pendingAnswer.qIdx === qIdx) {
+      if (typeof gtag === 'function') {
+        gtag('event', 'question_answered', {
+          question_index: qIdx,
+          option:         state.pendingAnswer.option,
+          result:         state.pendingAnswer.result,
+          vote:           finalVote === 'up' ? 1 : finalVote === 'down' ? -1 : 0,
+          topic:          sessionData.topic,
+          difficulty:     sessionData.difficulty,
+        });
+      }
+      state.pendingAnswer = null;
+    }
+
+    // Sync vote to Firestore once with the true final value
+    if (finalVote !== committed) {
+      QuestionBank.syncVoteToFirestore(sessionData.topic, sessionData.difficulty, q.question, committed, finalVote);
+      if (!state.committedVotes) state.committedVotes = {};
+      state.committedVotes[qKey] = finalVote;
+    }
+  }
+
   // Attach the navigation watcher BEFORE any awaits: if the score fetch below
   // is slow or fails, the client must still follow the host to the next state.
   // Both host AND player navigate through this watcher.
   const unsub = sessionRef.onSnapshot(snap => {
     const data = snap.data();
     if (!data) return;
-    if (data.status === 'question') { cleanup(); showQuestion(data); }
+    if (data.status === 'question') { flushQuestionAnalytics(); cleanup(); showQuestion(data); }
     // Reconnecting client can miss the next question entirely and land on a
     // later question's results — re-render for the new index.
-    else if (data.status === 'results' && data.currentQuestionIndex !== qIdx) { cleanup(); showResults(data); }
-    else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') { cleanup(); showFinal(); }
+    else if (data.status === 'results' && data.currentQuestionIndex !== qIdx) { flushQuestionAnalytics(); cleanup(); showResults(data); }
+    else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') { flushQuestionAnalytics(); cleanup(); showFinal(); }
   });
   state.unsubscribers.push(unsub);
 
@@ -1262,7 +1507,7 @@ async function showResults(sessionData) {
   // Host controls are wired synchronously (no awaits above them) so the host
   // can always advance even if the score fetch below fails.
   if (state.isHost) {
-    document.getElementById('host-results-panel').style.display = 'block';
+    document.getElementById('host-results-panel').style.display = 'flex';
     document.getElementById('player-waiting-msg').style.display = 'none';
 
     const nextBtn = document.getElementById('next-btn');
@@ -1271,6 +1516,8 @@ async function showResults(sessionData) {
 
     nextBtn.onclick = async () => {
       nextBtn.disabled = true;
+      TTS.stop();  // kill any active TTS before network calls (iOS throttles WebSocket during audio)
+      if (typeof gtag === 'function') gtag('event', isLast ? 'show_final_scores' : 'next_question', { question_index: qIdx });
       try {
         if (isLast) {
           await sessionRef.update({ status: 'finished' });
@@ -1287,7 +1534,24 @@ async function showResults(sessionData) {
             questionStartTime: firebase.firestore.FieldValue.serverTimestamp(),
           });
         }
-        // Navigation for host is handled by the watcher above — same as player
+        // Primary navigation: the onSnapshot watcher above fires for all clients
+        // (host + players). Fallback for iOS: if the watcher is delayed by audio
+        // session throttling, do a direct read after 5 seconds and navigate the
+        // host directly if still on this screen.
+        if (!isLast) {
+          const resultsScreen = document.getElementById('screen-round-results');
+          const fallbackTimer = setTimeout(async () => {
+            if (!resultsScreen.classList.contains('active')) return;
+            try {
+              const freshSnap = await sessionRef.get();
+              const freshData = freshSnap.data();
+              if (freshData && freshData.status === 'question' && freshData.currentQuestionIndex === qIdx + 1) {
+                flushQuestionAnalytics(); cleanup(); showQuestion(freshData);
+              }
+            } catch (e) { /* ignore — watcher will eventually catch up */ }
+          }, 5000);
+          state.unsubscribers.push(() => clearTimeout(fallbackTimer));
+        }
       } catch (err) {
         console.error('Next question failed:', err);
         nextBtn.disabled = false;
@@ -1301,8 +1565,10 @@ async function showResults(sessionData) {
     document.getElementById('player-waiting-msg').style.display = 'block';
   }
 
-  // Feedback buttons (results screen)
-  wireFeedbackButtons('', sessionData.topic, sessionData.difficulty, q);
+  // Feedback buttons (results screen) — hidden in lunch mode
+  const feedbackRowR = document.querySelector('#screen-round-results .feedback-row');
+  if (feedbackRowR) feedbackRowR.style.display = state.isLunchGame ? 'none' : '';
+  if (!state.isLunchGame) wireFeedbackButtons('', sessionData.topic, sessionData.difficulty, q);
 
   // Scores and per-player chips are cosmetic — a failed fetch must never
   // block navigation (watcher above) or the host's controls (wired above).
@@ -1369,7 +1635,10 @@ async function showFinal() {
 
   const playAgainBtn = document.getElementById('play-again-btn');
   playAgainBtn.style.display = state.isHost ? 'block' : 'none';
-  playAgainBtn.onclick = () => { cleanup(); state.sessionId = null; state.isHost = false; showHostSetup(); };
+  playAgainBtn.onclick = () => {
+    if (typeof gtag === 'function') gtag('event', 'play_again');
+    cleanup(); state.sessionId = null; state.isHost = false; showHostSetup();
+  };
   document.getElementById('home-btn').onclick = () => showHome();
 }
 
@@ -1397,6 +1666,9 @@ async function tryRejoin() {
   state.sessionId        = saved.sessionId;
   state.displayName      = saved.displayName;
   state.isHost           = saved.isHost;
+  state.isLunchGame      = saved.isLunchGame ?? false;
+  state.topic            = saved.topic ?? null;
+  state.difficulty       = saved.difficulty ?? null;
   state.questionFeedback = {};
 
   const session = snap.data();
@@ -1497,6 +1769,7 @@ async function renderRecentSessions(containerId) {
 // ============================================================
 
 function showWhatsNew() {
+  if (typeof gtag === 'function') gtag('event', 'open_whats_new');
   const modal = document.getElementById('whats-new-modal');
   const content = document.getElementById('whats-new-content');
   content.innerHTML = VERSIONS.map(v => `
@@ -1516,6 +1789,6 @@ function closeWhatsNew(e) {
   document.getElementById('whats-new-modal').style.display = 'none';
 }
 
-window.App = { showHome, showHostSetup, showJoin, showWhatsNew, closeWhatsNew };
+window.App = { showHome, showHostSetup, showJoin, showWhatsNew, closeWhatsNew, showLunchHostSetup };
 window.closeBannedModal = closeBannedModal;
 document.addEventListener('DOMContentLoaded', () => init().catch(console.error));

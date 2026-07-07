@@ -32,18 +32,18 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
-  /* Cover the notch/status-bar area with the gradient on every screen */
-  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
-  background-attachment: fixed;
+  /* Solid fallback fills the safe-area strips iOS Safari won't gradient-paint */
+  background-color: var(--bg-start);
   min-height: 100%;
 }
 html, body {
   height: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
-  background-attachment: fixed;
-  min-height: 100vh;
   color: var(--text);
+}
+body {
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  min-height: 100vh;
 }
 
 /* ============================================================
@@ -53,6 +53,8 @@ html, body {
   display: none;
   min-height: 100vh;
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 .screen.active { display: block; }
 
@@ -652,7 +654,7 @@ h3 {
 #host-results-panel {
   flex-direction: column;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 32px;
   width: 100%;
 }
 #host-results-panel #end-game-btn-r {
@@ -808,6 +810,36 @@ h3 {
   background: rgba(255,255,255,0.15);
   border-color: rgba(255,255,255,0.8);
   color: #fff;
+}
+
+/* Flying pizzas screensaver */
+#flying-pizzas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+  display: none;
+}
+.flying-pizza {
+  position: absolute;
+  animation: flyPizza linear infinite;
+  user-select: none;
+  line-height: 1;
+}
+@keyframes flyPizza {
+  from { transform: translate(0, 0) rotate(0deg); }
+  to   { transform: translate(-135vw, 135vh) rotate(-360deg); }
+}
+
+/* Make the logo icon clickable in lunch mode */
+.logo-icon { display: block; }
+
+.tagline-sub {
+  color: rgba(255,255,255,0.8);
+  font-size: 1rem;
+  margin-bottom: 24px;
+  text-align: center;
 }
 
 .modal-overlay {

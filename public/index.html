@@ -17,11 +17,11 @@
   <!-- Open Graph (iMessage, WhatsApp, Telegram, Slack, etc.) -->
   <meta property="og:title"       content="Showdown Live! 🎉">
   <meta property="og:description" content="Real-time multiplayer quiz for the whole family. AI-generated questions on any topic, live leaderboard, and fun for all ages!">
-  <meta property="og:image"       content="https://family-quiz-9815.web.app/og-image.png">
+  <meta property="og:image"       content="https://moore.diy/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:type"  content="image/png">
-  <meta property="og:url"         content="https://family-quiz-9815.web.app">
+  <meta property="og:url"         content="https://moore.diy/showdown">
   <meta property="og:type"        content="website">
   <meta property="og:site_name"   content="Showdown Live">
 
@@ -29,9 +29,9 @@
   <meta name="twitter:card"        content="summary_large_image">
   <meta name="twitter:title"       content="Showdown Live! 🎉">
   <meta name="twitter:description" content="Real-time multiplayer quiz for the whole family. AI-generated questions on any topic, live leaderboard, and fun for all ages!">
-  <meta name="twitter:image"       content="https://family-quiz-9815.web.app/og-image.png">
+  <meta name="twitter:image"       content="https://moore.diy/og-image.png">
 
-  <link rel="stylesheet" href="style.css?v=20260327">
+  <link rel="stylesheet" href="/style.css?v=20260707">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-DJL0Q390ZF"></script>
   <script>
@@ -47,7 +47,7 @@
   <script defer src="/__/firebase/12.10.0/firebase-functions-compat.js"></script>
   <script defer src="/__/firebase/12.10.0/firebase-app-check-compat.js"></script>
   <script defer src="/__/firebase/init.js?useEmulator=false"></script>
-  <script defer src="app.js?v=20260706-3"></script>
+  <script defer src="/app.js?v=20260707"></script>
 </head>
 <body>
 
@@ -77,6 +77,21 @@
         <button class="modal-close" onclick="App.closeWhatsNew()">✕</button>
       </div>
       <div id="whats-new-content" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ===== LUNCH HOST SETUP ===== -->
+  <div id="screen-lunch-host-setup" class="screen">
+    <div class="screen-inner">
+      <button class="back-btn" onclick="App.showHome()">← Back</button>
+      <h2>🍕 Lunch Quiz</h2>
+      <p class="tagline-sub">What's for lunch at Leary Elementary this week?</p>
+      <form id="lunch-host-form" class="setup-form">
+        <label>Your name
+          <input type="text" id="lunch-host-name" placeholder="e.g. Dad, Mum, Grandma" required maxlength="30">
+        </label>
+        <button type="submit" class="btn btn-host">🍽️ Start Lunch Quiz!</button>
+      </form>
     </div>
   </div>
 
@@ -306,5 +321,6 @@
     </div>
   </div>
 
+  <div id="flying-pizzas"></div>
 </body>
 </html>
