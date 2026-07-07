@@ -70,6 +70,16 @@ const BannedWords = {
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.20',
+    label: 'v1.20: Sync Reliability',
+    date: 'July 2026',
+    changes: [
+      'Fixed players sometimes getting stuck on the results screen when the host moved to the next question.',
+      'Players whose phone locked or browser went to the background now catch up with the game automatically when they return.',
+      'Players still in the lobby are now told when the host cancels the game.',
+    ],
+  },
+  {
     version: '1.19',
     label: 'v1.19: Bug Fixes & Polish',
     date: 'March 2026',
@@ -1002,6 +1012,13 @@ function showLobbyPlayer() {
     const data = snap.data();
     if (!data) return;
     if (data.status === 'question') { cleanup(); showQuestion(data); }
+    // Missed the start while briefly disconnected — catch up mid-game
+    else if (data.status === 'results') { cleanup(); showResults(data); }
+    else if (data.status === 'finished') { cleanup(); showFinal(); }
+    else if (data.status === 'ended-manual' || data.status === 'ended-auto') {
+      showHome();
+      showError('The host ended the game.');
+    }
   });
   state.unsubscribers.push(unsub1);
   const unsub2 = sessionRef.collection('players').onSnapshot(snap => {
@@ -1087,9 +1104,12 @@ function showQuestion(sessionData) {
   const watchUnsub = sessionRef.onSnapshot(snap => {
     const data = snap.data();
     if (!data) return;
-    if (data.status === 'results' && data.currentQuestionIndex === qIdx) {
+    // No index check on 'results': a briefly disconnected client can miss
+    // intermediate states and land directly on a later question's results —
+    // showResults renders whatever index the snapshot carries.
+    if (data.status === 'results') {
       cleanup(); showResults(data);
-    } else if (data.status === 'finished' || data.status === 'ended-manual') {
+    } else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') {
       cleanup(); showFinal();
     } else if (data.status === 'question' && data.currentQuestionIndex !== qIdx) {
       cleanup(); showQuestion(data);
@@ -1197,6 +1217,23 @@ async function showResults(sessionData) {
   const correctLetter = letters[q.correct];
   const correctText   = q.options[q.correct];
 
+  const sessionRef = db.collection('sessions').doc(state.sessionId);
+  const isLast     = qIdx >= questions.length - 1;
+
+  // Attach the navigation watcher BEFORE any awaits: if the score fetch below
+  // is slow or fails, the client must still follow the host to the next state.
+  // Both host AND player navigate through this watcher.
+  const unsub = sessionRef.onSnapshot(snap => {
+    const data = snap.data();
+    if (!data) return;
+    if (data.status === 'question') { cleanup(); showQuestion(data); }
+    // Reconnecting client can miss the next question entirely and land on a
+    // later question's results — re-render for the new index.
+    else if (data.status === 'results' && data.currentQuestionIndex !== qIdx) { cleanup(); showResults(data); }
+    else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') { cleanup(); showFinal(); }
+  });
+  state.unsubscribers.push(unsub);
+
   document.getElementById('results-q-label').textContent = `Question ${qIdx + 1} of ${questions.length}`;
 
   // Hide card until we know if the player got it right, to avoid a green→red flash
@@ -1208,49 +1245,8 @@ async function showResults(sessionData) {
     `<span class="answer-badge">${correctLetter}</span>${escapeHtml(correctText)}`;
   document.getElementById('results-explanation').textContent = q.explanation || '';
 
-  const pSnap   = await db.collection('sessions').doc(state.sessionId).collection('players').get();
-  const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.score - a.score);
-
-  const myPlayer    = players.find(p => p.id === state.userId);
-  const iGotItRight = myPlayer && myPlayer.currentAnswer === q.correct;
-  card.classList.remove('loading');
-  if (iGotItRight) {
-    card.classList.remove('wrong');
-    label.textContent = '✅ Correct Answer';
-  } else {
-    card.classList.add('wrong');
-    label.textContent = '❌ You got this wrong. Correct answer was:';
-  }
-
-  // Color-coded player chips: green = correct, red = wrong, outline = you
-  document.getElementById('who-got-it').innerHTML = players.map(p => {
-    const isCorrect = p.currentAnswer === q.correct;
-    const isMe      = p.id === state.userId;
-    const classes   = ['got-it-chip', isCorrect ? 'correct' : 'wrong', isMe ? 'me' : ''].join(' ').trim();
-    const icon      = isCorrect ? '✅' : '❌';
-    const youLabel  = isMe ? ' <em>(you)</em>' : '';
-    return `<div class="${classes}">${icon} ${escapeHtml(p.displayName)}${youLabel}</div>`;
-  }).join('');
-
-  // Reaction banner: all correct or all wrong
-  const correctCount = players.filter(p => p.currentAnswer === q.correct).length;
-  const bannerEl = document.getElementById('reaction-banner');
-  if (players.length > 1 && correctCount === players.length) {
-    bannerEl.innerHTML = '<div class="reaction-banner all-correct">🎉🎉🎉 Everyone got it right!</div>';
-  } else if (correctCount === 0) {
-    bannerEl.innerHTML = '<div class="reaction-banner all-wrong">😬 Nobody got this one, even the AI is impressed!</div>';
-  } else {
-    bannerEl.innerHTML = '';
-  }
-
-  // Feedback buttons (results screen)
-  wireFeedbackButtons('', sessionData.topic, sessionData.difficulty, q);
-
-  renderLeaderboard('results-leaderboard', players);
-
-  const sessionRef = db.collection('sessions').doc(state.sessionId);
-  const isLast     = qIdx >= questions.length - 1;
-
+  // Host controls are wired synchronously (no awaits above them) so the host
+  // can always advance even if the score fetch below fails.
   if (state.isHost) {
     document.getElementById('host-results-panel').style.display = 'block';
     document.getElementById('player-waiting-msg').style.display = 'none';
@@ -1277,7 +1273,7 @@ async function showResults(sessionData) {
             questionStartTime: firebase.firestore.FieldValue.serverTimestamp(),
           });
         }
-        // Navigation for host is handled by the watcher below — same as player
+        // Navigation for host is handled by the watcher above — same as player
       } catch (err) {
         console.error('Next question failed:', err);
         nextBtn.disabled = false;
@@ -1286,21 +1282,59 @@ async function showResults(sessionData) {
     };
 
     document.getElementById('end-game-btn-r').onclick = cancelGame;
-    document.getElementById('host-results-panel').style.display = 'block';
-    document.getElementById('player-waiting-msg').style.display = 'none';
   } else {
     document.getElementById('host-results-panel').style.display = 'none';
     document.getElementById('player-waiting-msg').style.display = 'block';
   }
 
-  // Both host AND player watch for the next state — this is what actually navigates
-  const unsub = sessionRef.onSnapshot(snap => {
-    const data = snap.data();
-    if (!data) return;
-    if (data.status === 'question') { cleanup(); showQuestion(data); }
-    else if (data.status === 'finished' || data.status === 'ended-manual') { cleanup(); showFinal(); }
-  });
-  state.unsubscribers.push(unsub);
+  // Feedback buttons (results screen)
+  wireFeedbackButtons('', sessionData.topic, sessionData.difficulty, q);
+
+  // Scores and per-player chips are cosmetic — a failed fetch must never
+  // block navigation (watcher above) or the host's controls (wired above).
+  try {
+    const pSnap   = await sessionRef.collection('players').get();
+    const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.score - a.score);
+
+    const myPlayer    = players.find(p => p.id === state.userId);
+    const iGotItRight = myPlayer && myPlayer.currentAnswer === q.correct;
+    card.classList.remove('loading');
+    if (iGotItRight) {
+      card.classList.remove('wrong');
+      label.textContent = '✅ Correct Answer';
+    } else {
+      card.classList.add('wrong');
+      label.textContent = '❌ You got this wrong. Correct answer was:';
+    }
+
+    // Color-coded player chips: green = correct, red = wrong, outline = you
+    document.getElementById('who-got-it').innerHTML = players.map(p => {
+      const isCorrect = p.currentAnswer === q.correct;
+      const isMe      = p.id === state.userId;
+      const classes   = ['got-it-chip', isCorrect ? 'correct' : 'wrong', isMe ? 'me' : ''].join(' ').trim();
+      const icon      = isCorrect ? '✅' : '❌';
+      const youLabel  = isMe ? ' <em>(you)</em>' : '';
+      return `<div class="${classes}">${icon} ${escapeHtml(p.displayName)}${youLabel}</div>`;
+    }).join('');
+
+    // Reaction banner: all correct or all wrong
+    const correctCount = players.filter(p => p.currentAnswer === q.correct).length;
+    const bannerEl = document.getElementById('reaction-banner');
+    if (players.length > 1 && correctCount === players.length) {
+      bannerEl.innerHTML = '<div class="reaction-banner all-correct">🎉🎉🎉 Everyone got it right!</div>';
+    } else if (correctCount === 0) {
+      bannerEl.innerHTML = '<div class="reaction-banner all-wrong">😬 Nobody got this one, even the AI is impressed!</div>';
+    } else {
+      bannerEl.innerHTML = '';
+    }
+
+    renderLeaderboard('results-leaderboard', players);
+  } catch (err) {
+    console.warn('showResults: player fetch failed:', err);
+    card.classList.remove('loading');
+    card.classList.remove('wrong');
+    label.textContent = '✅ Correct Answer';
+  }
 }
 
 // ----- FINAL -----
@@ -1385,6 +1419,17 @@ async function init() {
     }
   }
   catch (e) { console.error('Firebase init failed:', e); return; }
+
+  // Phones lock and tabs background mid-game, which can silently kill the
+  // Firestore stream — those players then never see the host advance. When
+  // the tab becomes visible again during an active session, bounce the
+  // network connection so every attached watcher resyncs to the latest state.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !state.sessionId) return;
+    db.disableNetwork()
+      .then(() => db.enableNetwork())
+      .catch(e => console.warn('Firestore network bounce failed:', e));
+  });
 
   const code = new URLSearchParams(location.search).get('code');
   if (code) { showJoin(); return; }
