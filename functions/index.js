@@ -39,6 +39,14 @@ AVOID: questions that are merely obscure trivia with no interesting insight ("wh
 Question format examples: "Which of these widely-held beliefs is actually false?", "What was the original purpose of...?", "Which of these happened first?"`,
 ];
 
+// Firestore doc ID for a questionBank entry. MUST stay in sync with
+// QuestionBank._firestoreKey in public/app.js — clients read the bank
+// directly using this exact key format.
+function firestoreKey(topic, difficulty) {
+  const t = topic.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').slice(0, 60);
+  return `${t}_d${difficulty}`;
+}
+
 // Words that must not appear in stored questions.
 const BANNED_WORDS_RE = /\b(donald|trump|elon|musk|fuck|shit|ass|nigger|negro|bitch|cunt)\b/i;
 function questionContainsBannedWord(q) {
@@ -129,8 +137,7 @@ The "correct" field is the 0-based index (0=first option, 1=second, 2=third, 3=f
     // Store clean questions in the shared bank (server-side, authoritative)
     try {
       const db = admin.firestore();
-      const firestoreKey = `${topic.toLowerCase().trim()}_${difficulty}`;
-      const docRef = db.collection('questionBank').doc(firestoreKey);
+      const docRef = db.collection('questionBank').doc(firestoreKey(topic, difficulty));
       await db.runTransaction(async tx => {
         const snap = await tx.get(docRef);
         const existing = snap.exists ? (snap.data().questions || []) : [];
@@ -178,8 +185,7 @@ exports.submitVote = onCall(
     }
 
     const db = admin.firestore();
-    const firestoreKey = `${topic.toLowerCase().trim()}_${difficulty}`;
-    const docRef = db.collection('questionBank').doc(firestoreKey);
+    const docRef = db.collection('questionBank').doc(firestoreKey(topic, difficulty));
     const qKey = questionText.toLowerCase().trim();
 
     try {
@@ -238,4 +244,4 @@ exports.cleanupOldSessions = onSchedule(
 );
 
 // Pure helpers exposed for unit tests only — not part of the deployed API.
-module.exports.__test = { questionContainsBannedWord };
+module.exports.__test = { firestoreKey, questionContainsBannedWord };
