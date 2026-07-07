@@ -4,7 +4,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
-admin.initializeApp();
+if (admin.apps.length === 0) admin.initializeApp();
 
 const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
@@ -236,3 +236,6 @@ exports.cleanupOldSessions = onSchedule(
     console.log(`cleanupOldSessions: auto-closed ${toClose.length} stale sessions`);
   }
 );
+
+// Pure helpers exposed for unit tests only — not part of the deployed API.
+module.exports.__test = { questionContainsBannedWord };
