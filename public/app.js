@@ -811,6 +811,19 @@ async function startCreateGame(hostName, topic, difficulty, numQ, timeQ, scoring
       questions = QuestionBank.get(topic, difficulty, numQ, uid);
     }
 
+    // No questions at all — don't create a broken session
+    if (questions.length === 0) {
+      clearTimeout(slowMsgTimer);
+      GeneratingAnimation.stop();
+      showScreen('screen-host-setup');
+      showError(`Couldn't get any questions for "${topic}". Please try again or pick a different topic.`);
+      return;
+    }
+    // Fewer than requested — playable, but tell the host
+    if (questions.length < numQ) {
+      showError(`Only ${questions.length} of ${numQ} questions were available — this game will be shorter.`);
+    }
+
     // 4. Record these questions as seen for this host
     QuestionBank.markSeen(topic, difficulty, questions.map(q => q.question), uid);
 
@@ -1035,6 +1048,7 @@ function showQuestion(sessionData) {
 
   const { questions, currentQuestionIndex: qIdx, timePerQuestion, questionStartTime } = sessionData;
   const q       = questions[qIdx];
+  if (!q) { showFinal(); return; }  // index past the end of the question list
   const total   = questions.length;
   const letters = ['A', 'B', 'C', 'D'];
 
