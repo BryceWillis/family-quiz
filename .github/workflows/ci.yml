@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22' # match the Cloud Functions runtime
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Cloud Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: functions
+        run: npm test
+
+      - name: Syntax-check all JavaScript
+        run: |
+          node --check functions/index.js
+          node --check functions/test/unit.test.js
+          node --check scripts/migrate-bank-ids.js
+          node --check public/app.js
