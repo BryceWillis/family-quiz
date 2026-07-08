@@ -255,6 +255,212 @@ exports.submitVote = onCall(
   }
 );
 
+// ============================================================
+//  LUNCH MENU QUIZ
+// ============================================================
+
+const SCHOOL_KEY     = 'LearyElementarySchool';
+const BACKFILL_START = '09-02-2025';
+const BACKFILL_END   = '06-01-2026';
+
+// Map food name keywords → emoji (first match wins)
+const FOOD_EMOJI_MAP = [
+  [/pizza/i,                     '🍕'],
+  [/mac.*(cheese|chz)|macaroni/i,'🧀'],
+  [/pasta|spaghetti|noodle|lasagna|ravioli/i, '🍝'],
+  [/taco/i,                      '🌮'],
+  [/burrito|quesadilla/i,        '🌯'],
+  [/chicken/i,                   '🍗'],
+  [/fish|salmon|tilapia|cod/i,   '🐟'],
+  [/hot.?dog|corn.?dog/i,        '🌭'],
+  [/burger|patty/i,              '🍔'],
+  [/soup|chili|stew/i,           '🍲'],
+  [/rice/i,                      '🍚'],
+  [/stir.?fry|fried rice/i,      '🥘'],
+  [/salad/i,                     '🥗'],
+  [/pretzel/i,                   '🥨'],
+  [/nacho/i,                     '🧀'],
+  [/waffle|pancake/i,            '🧇'],
+  [/egg/i,                       '🥚'],
+  [/corn/i,                      '🌽'],
+  [/pot(ato|pie)/i,              '🥔'],
+];
+
+function foodEmoji(name) {
+  for (const [re, emoji] of FOOD_EMOJI_MAP) {
+    if (re.test(name)) return emoji;
+  }
+  return '🍽️';
+}
+
+function fmt(d) {
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Extract the first ENTREE per school day from a MealViewer API response. */
+function extractEntrees(data) {
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const results = []; // [{ day, entree }]
+  for (const schedule of (data.menuSchedules || [])) {
+    const dayName = schedule.dateInformation?.weekDayName;
+    if (!DAYS.includes(dayName)) continue;
+    for (const block of (schedule.menuBlocks || [])) {
+      if (!block.blockName?.toLowerCase().includes('lunch')) continue;
+      for (const line of (block.cafeteriaLineList?.data || [])) {
+        const entrees = (line.foodItemList?.data || [])
+          .filter(f => f.item_Type === 'ENTREES');
+        if (entrees.length > 0) { results.push({ day: dayName, entree: entrees[0].item_Name }); break; }
+      }
+      break;
+    }
+  }
+  return results;
+}
+
+exports.getLunchMenu = onCall(
+  { region: 'us-east1', timeoutSeconds: 120, maxInstances: 5 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const db      = admin.firestore();
+    const poolRef = db.collection('lunchData').doc('entreePool');
+
+    // --- POOL REFRESH (backfill + ongoing) ---
+    // Only one refresh per 24 h — concurrent hosts will read the same snapshot
+    // and all skip; Firestore's idempotent Set merge handles any races.
+    const poolSnap      = await poolRef.get();
+    const poolData      = poolSnap.exists ? poolSnap.data() : {};
+    const lastRefreshed = poolData.lastRefreshedAt?.toDate();
+    const backfillDone  = poolData.backfillComplete === true;
+    const stale         = !lastRefreshed || (Date.now() - lastRefreshed.getTime() > 24 * 60 * 60 * 1000);
+
+    if (stale) {
+      try {
+        // First run: fetch full school year; subsequent runs: just current term window
+        const fetchStart = backfillDone ? fmt((() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; })()) : BACKFILL_START;
+        const fetchEnd   = BACKFILL_END;
+        const url        = `https://api.mealviewer.com/api/v4/school/${SCHOOL_KEY}/${fetchStart}/${fetchEnd}/`;
+        const res        = await fetch(url);
+        if (res.ok) {
+          const data        = await res.json();
+          const newEntrees  = extractEntrees(data).map(d => d.entree);
+          const existing    = new Set(poolData.entrees || []);
+          newEntrees.forEach(e => existing.add(e));
+          await poolRef.set({
+            entrees:          [...existing],
+            lastRefreshedAt:  admin.firestore.FieldValue.serverTimestamp(),
+            backfillComplete: true,
+          }, { merge: true });
+        }
+      } catch (e) {
+        console.warn('getLunchMenu: pool refresh failed (non-fatal):', e);
+      }
+    }
+
+    // Re-read pool after potential refresh
+    const freshPoolSnap = await poolRef.get();
+    const pool          = freshPoolSnap.exists ? (freshPoolSnap.data().entrees || []) : [];
+
+    // --- FETCH THIS WEEK'S MENU ---
+    // Try the upcoming week; if it's a full break (no entrees any day), fall back up to
+    // 4 previous weeks. Single days off within a week are handled below as "No School" answers.
+    const now = new Date();
+    const dow = now.getDay(); // 0=Sun
+    let weekEntrees = [];
+    let weekRawData = null;
+
+    for (let weekOffset = 0; weekOffset <= 4; weekOffset++) {
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + (dow === 0 ? 1 : 8 - dow) - weekOffset * 7);
+      const friday = new Date(monday);
+      friday.setDate(monday.getDate() + 4);
+
+      const url = `https://api.mealviewer.com/api/v4/school/${SCHOOL_KEY}/${fmt(monday)}/${fmt(friday)}/`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const weekData = await res.json();
+      weekRawData  = weekData;
+      weekEntrees  = extractEntrees(weekData);
+      if (weekEntrees.length > 0) break;
+    }
+
+    if (weekEntrees.length === 0) {
+      throw new HttpsError('not-found', "Couldn't find a recent lunch menu — check back later!");
+    }
+
+    // Detect school days with no entree (single days off) and add "No School" questions
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const entreeMap = Object.fromEntries(weekEntrees.map(d => [d.day, d.entree]));
+    const scheduledDays = new Set((weekRawData?.menuSchedules || [])
+      .map(s => s.dateInformation?.weekDayName).filter(Boolean));
+    // Days in the schedule but with no entree = No School day
+    const noDays = DAYS.filter(d => scheduledDays.has(d) && !entreeMap[d]);
+    // Include No School days as questions (correct answer = "No School")
+    const NO_SCHOOL_LABEL = '🚫 No School';
+    for (const day of noDays) {
+      weekEntrees.push({ day, entree: NO_SCHOOL_LABEL });
+    }
+
+    // Add this week's entrees to pool too (idempotent)
+    const poolSet = new Set(pool);
+    weekEntrees.forEach(d => poolSet.add(d.entree));
+    // Exclude items that are poor distractors (side items, snacks, not a main lunch)
+    const DISTRACTOR_EXCLUDE = /uncrustable/i;
+    const fullPool = [...poolSet].filter(e => !DISTRACTOR_EXCLUDE.test(e));
+
+    // --- BUILD QUESTIONS ---
+    // Sort by school day order
+    const DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+    weekEntrees.sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
+
+    const questions = [];
+    for (const { day, entree } of weekEntrees.slice(0, 5)) {
+      const isNoSchool = entree === NO_SCHOOL_LABEL;
+
+      // Pool of wrong answers: real entrees + always include "No School" as a plausible distractor
+      const poolForQuestion = isNoSchool
+        ? shuffle(fullPool).slice(0, 3)  // No School question: 3 real food wrong answers
+        : shuffle([...fullPool.filter(e => e !== entree), ...noDays.length > 0 ? [NO_SCHOOL_LABEL] : []]).slice(0, 3);
+
+      const fromWeek = weekEntrees
+        .filter(d => d.entree !== entree && d.entree !== NO_SCHOOL_LABEL)
+        .map(d => d.entree);
+      const wrongs = [...new Set([...poolForQuestion, ...fromWeek])].slice(0, 3);
+      if (wrongs.length < 3) continue;
+
+      const label      = isNoSchool ? NO_SCHOOL_LABEL : entree;
+      const rawOptions = shuffle([label, ...wrongs]);
+      const fmtOption  = o => o === NO_SCHOOL_LABEL ? o : `${foodEmoji(o)} ${o}`;
+      const options    = rawOptions.map(fmtOption);
+      const correctFmt = fmtOption(label);
+
+      questions.push({
+        question:    `What's the main lunch on ${day}?`,
+        options,
+        correct:     options.indexOf(correctFmt),
+        explanation: isNoSchool
+          ? `There's no school on ${day} this week! 🚫`
+          : `${foodEmoji(entree)} ${entree} is on the menu for ${day} this week!`,
+      });
+    }
+
+    if (questions.length === 0) {
+      throw new HttpsError('failed-precondition', "Not enough lunch history yet — try again next week!");
+    }
+
+    return { questions };
+  }
+);
+
 // Auto-close sessions that are more than 7 days old and not already in a terminal state
 const TERMINAL_STATUSES = new Set(['finished', 'ended-manual', 'ended-auto']);
 
