@@ -100,7 +100,7 @@ exports.generateQuestions = onCall(
     const diffPrompt = DIFFICULTY_PROMPTS[difficulty];
     // Easy + Medium: Haiku is fast, cheap, and quality is fine for general knowledge.
     // Hard + Impossible: Opus for competitive distractors and nuanced reasoning.
-    const model = difficulty <= 1 ? 'claude-haiku-4-5-20251001' : 'claude-opus-4-6';
+    const model = difficulty <= 1 ? 'claude-haiku-4-5-20251001' : 'claude-opus-4-8';
 
     const t0 = Date.now();
     const res = await fetch('https://api.anthropic.com/v1/messages', {
