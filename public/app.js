@@ -70,6 +70,17 @@ const BannedWords = {
 // ----- VERSION HISTORY -----
 const VERSIONS = [
   {
+    version: '1.21',
+    label: 'v1.21: Nobody Gets Left Behind',
+    date: 'September 2026',
+    changes: [
+      'Fixed players being left in the lobby when the host started the game. Every screen now double-checks the game state on a timer, so a dropped update costs a few seconds instead of the whole game.',
+      'Dropped connections are detected and reconnected automatically, on every screen.',
+      'A player whose browser reloads mid-game now goes straight back into the game instead of the join screen.',
+      'Players who get kicked out can rejoin a game that has already started.',
+    ],
+  },
+  {
     version: '1.20',
     label: 'v1.20: Sync Reliability',
     date: 'July 2026',
@@ -269,6 +280,9 @@ const state = {
   timerInterval:    null,
   endingQuestion:   false,
   questionFeedback: {},  // key: lowercase question text → 'up' | 'down' | null
+  // Sync reliability (see SYNC RELIABILITY below)
+  sessionSnapHandler: null,  // current screen's session-doc handler, replayed by the watchdog
+  watchGeneration:    0,     // bumped by cleanup() so stale re-attaches bail out
 };
 
 let db, auth;
@@ -291,12 +305,112 @@ function generateGameCode() {
 }
 
 function cleanup() {
+  state.watchGeneration++;          // invalidate any pending watcher re-attach
+  state.sessionSnapHandler = null;  // nothing for the watchdog to replay until a screen re-registers
   state.unsubscribers.forEach(fn => fn && fn());
   state.unsubscribers  = [];
   if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
   TTS.stop();
   state.endingQuestion = false;
 }
+
+// ============================================================
+//  SYNC RELIABILITY
+// ============================================================
+//  Every screen transition is driven by a single Firestore snapshot, so one
+//  swallowed update strands a client on the screen it is already showing with
+//  no way back. Three things swallow updates:
+//    1. A listen stream that errors is dropped by the SDK permanently — and
+//       silently, because none of these watchers passed an error callback.
+//    2. A locked phone or backgrounded tab kills the stream without the SDK
+//       noticing, so the update is never delivered at all.
+//    3. A network bounce whose enableNetwork() rejected left Firestore
+//       disabled for the rest of the session.
+//  watchWithRetry re-attaches dead listeners, NetworkBounce always ends up
+//  enabled, and SessionWatchdog re-reads the session on a timer and replays it
+//  through the current screen's handler. A lost snapshot now costs a few
+//  seconds instead of the rest of the game.
+
+const WATCHDOG_INTERVAL_MS = 4000;
+
+/** onSnapshot that re-attaches itself if the stream errors out.
+ *  Returns the unsubscribe fn for the current attachment; a re-attachment
+ *  pushes its own unsubscribe onto state.unsubscribers. */
+function watchWithRetry(ref, handler, label) {
+  const gen    = state.watchGeneration;
+  const attach = () => ref.onSnapshot(handler, err => {
+    console.warn(`${label} watcher failed (${err && err.code}) — re-attaching`);
+    if (gen !== state.watchGeneration) return;   // screen already moved on
+    setTimeout(() => {
+      if (gen !== state.watchGeneration) return;
+      state.unsubscribers.push(attach());
+    }, 1000);
+  });
+  return attach();
+}
+
+/** watchWithRetry for the session document, remembering the handler so the
+ *  watchdog can replay a freshly fetched snapshot through the same logic.
+ *  Every session handler is a no-op when fed the state it already shows, so
+ *  replaying is always safe. */
+function watchSession(ref, handler, label) {
+  const unsub = watchWithRetry(ref, handler, label);
+  state.sessionSnapHandler = handler;
+  return unsub;
+}
+
+/** Tear the Firestore connection down and back up so every watcher resyncs.
+ *  Always ends enabled — the previous version could leave a client offline
+ *  forever if enableNetwork() rejected. */
+const NetworkBounce = {
+  _busy: false,
+
+  async request(reason) {
+    if (this._busy || !db) return;
+    this._busy = true;
+    try {
+      await db.disableNetwork();
+      await db.enableNetwork();
+    } catch (e) {
+      console.warn(`network bounce (${reason}) failed:`, e);
+      try { await db.enableNetwork(); } catch { /* watchdog retries */ }
+    } finally {
+      this._busy = false;
+    }
+  },
+};
+
+/** Re-reads the session document on a timer and replays it through the current
+ *  screen's handler, so a client that missed a push still follows the host. */
+const SessionWatchdog = {
+  _timer: null,
+  _busy:  false,
+
+  start() {
+    if (this._timer) return;
+    this._timer = setInterval(() => this.tick(), WATCHDOG_INTERVAL_MS);
+  },
+
+  async tick() {
+    if (this._busy || !db || !state.sessionId || !state.sessionSnapHandler) return;
+    // A hidden tab has nothing to render; visibilitychange resyncs on return.
+    if (document.visibilityState !== 'visible') return;
+    this._busy = true;
+    const sid     = state.sessionId;
+    const handler = state.sessionSnapHandler;
+    try {
+      // source:'server' so a wedged connection surfaces as an error rather than
+      // quietly handing back the stale cached document.
+      const snap = await db.collection('sessions').doc(sid).get({ source: 'server' });
+      // Bail if the screen moved on while the read was in flight
+      if (state.sessionId === sid && state.sessionSnapHandler === handler) handler(snap);
+    } catch (e) {
+      NetworkBounce.request(`watchdog:${e && e.code}`);
+    } finally {
+      this._busy = false;
+    }
+  },
+};
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -1102,12 +1216,12 @@ function showLobbyHost() {
 
   const sessionRef = db.collection('sessions').doc(state.sessionId);
 
-  const unsub = sessionRef.collection('players').onSnapshot(snap => {
+  const unsub = watchWithRetry(sessionRef.collection('players'), snap => {
     const players = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderPlayerChips('host-lobby-players', players);
     document.getElementById('player-count').textContent = players.length;
     document.getElementById('start-btn').disabled = players.length < 2;
-  });
+  }, 'host lobby players');
   state.unsubscribers.push(unsub);
 
   const cancelBtn = document.getElementById('cancel-lobby-btn');
@@ -1153,11 +1267,11 @@ function showLobbyHost() {
   };
 
   // Host watches for game start (same pattern as player)
-  const startWatchUnsub = sessionRef.onSnapshot(snap => {
+  const startWatchUnsub = watchSession(sessionRef, snap => {
     const data = snap.data();
     if (!data) return;
     if (data.status === 'question') { cleanup(); showQuestion(data); }
-  });
+  }, 'host lobby');
   state.unsubscribers.push(startWatchUnsub);
 }
 
@@ -1189,27 +1303,43 @@ async function joinGame(playerName, code) {
     const sessionRef = db.collection('sessions').doc(code);
     const snap = await sessionRef.get();
     if (!snap.exists) { showError('Game not found! Check the code and try again.'); return; }
-    const session = snap.data();
-    if (session.status !== 'lobby') { showError('This game has already started!'); return; }
+    const session  = snap.data();
+    const inLobby  = session.status === 'lobby';
+    const terminal = new Set(['finished', 'ended-manual', 'ended-auto']);
+    if (terminal.has(session.status)) { showError('That game is already over!'); return; }
 
-    state.displayName      = playerName;
+    // Already started: only someone who is already a player may come back in —
+    // a player whose browser dropped them needs a way back to the game.
+    let existing = null;
+    if (!inLobby) {
+      existing = await sessionRef.collection('players').doc(state.userId).get();
+      if (!existing.exists) { showError('This game has already started!'); return; }
+    }
+
+    state.displayName      = inLobby ? playerName : (existing.data().displayName || playerName);
     state.sessionId        = code;
     state.isHost           = false;
     state.isLunchGame      = session.topic?.includes('🍕') ?? false;
     state.questionFeedback = {};
 
-    await sessionRef.collection('players').doc(state.userId).set({
-      displayName: playerName,
-      score: 0, answeredCurrentQuestion: false,
-      currentAnswer: -1, lastAnswerCorrect: null,
-      joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    // Only write the player doc when joining fresh. Re-writing it mid-game
+    // would reset the score, which the security rules reject anyway.
+    if (inLobby) {
+      await sessionRef.collection('players').doc(state.userId).set({
+        displayName: playerName,
+        score: 0, answeredCurrentQuestion: false,
+        currentAnswer: -1, lastAnswerCorrect: null,
+        joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
     localStorage.setItem('fq_session', JSON.stringify({
-      sessionId: code, displayName: playerName, isHost: false, uid: state.userId,
+      sessionId: code, displayName: state.displayName, isHost: false, uid: state.userId,
     }));
     if (typeof gtag === 'function') gtag('event', 'join_game_submit');
-    showLobbyPlayer();
+    if (inLobby)                          showLobbyPlayer();
+    else if (session.status === 'question') showQuestion(session);
+    else                                    showResults(session);
   } catch (err) { showError(`Could not join: ${err.message}`); }
 }
 
@@ -1221,7 +1351,7 @@ function showLobbyPlayer() {
   document.getElementById('player-game-code').textContent = state.sessionId;
 
   const sessionRef = db.collection('sessions').doc(state.sessionId);
-  const unsub1 = sessionRef.onSnapshot(snap => {
+  const unsub1 = watchSession(sessionRef, snap => {
     const data = snap.data();
     if (!data) return;
     if (data.status === 'question') { cleanup(); showQuestion(data); }
@@ -1232,11 +1362,11 @@ function showLobbyPlayer() {
       showHome();
       showError('The host ended the game.');
     }
-  });
+  }, 'player lobby');
   state.unsubscribers.push(unsub1);
-  const unsub2 = sessionRef.collection('players').onSnapshot(snap => {
+  const unsub2 = watchWithRetry(sessionRef.collection('players'), snap => {
     renderPlayerChips('player-lobby-list', snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  });
+  }, 'player lobby players');
   state.unsubscribers.push(unsub2);
 }
 
@@ -1249,6 +1379,26 @@ function showQuestion(sessionData) {
   const { questions, currentQuestionIndex: qIdx, timePerQuestion, questionStartTime } = sessionData;
   const q       = questions[qIdx];
   if (!q) { showFinal(); return; }  // index past the end of the question list
+
+  // Attach the navigation watcher before rendering anything: a render failure
+  // must never leave this client without a way to follow the host. Both host
+  // AND player navigate through it.
+  const sessionRef = db.collection('sessions').doc(state.sessionId);
+  state.unsubscribers.push(watchSession(sessionRef, snap => {
+    const data = snap.data();
+    if (!data) return;
+    // No index check on 'results': a briefly disconnected client can miss
+    // intermediate states and land directly on a later question's results —
+    // showResults renders whatever index the snapshot carries.
+    if (data.status === 'results') {
+      cleanup(); showResults(data);
+    } else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') {
+      cleanup(); showFinal();
+    } else if (data.status === 'question' && data.currentQuestionIndex !== qIdx) {
+      cleanup(); showQuestion(data);
+    }
+  }, 'question'));
+
   const total   = questions.length;
   const letters = ['A', 'B', 'C', 'D'];
 
@@ -1316,36 +1466,17 @@ function showQuestion(sessionData) {
     document.getElementById('end-game-btn-q').onclick = cancelGame;
 
     // Auto-advance when ALL players have answered
-    const sessionRef = db.collection('sessions').doc(state.sessionId);
-    const autoUnsub = sessionRef.collection('players').onSnapshot(async snap => {
+    const autoUnsub = watchWithRetry(sessionRef.collection('players'), async snap => {
       const players = snap.docs.map(d => d.data());
       if (players.length > 0 && players.every(p => p.answeredCurrentQuestion)) {
         await delay(1200);
         await endQuestion(qIdx);
       }
-    });
+    }, 'question players');
     state.unsubscribers.push(autoUnsub);
   } else {
     hostPanel.style.display = 'none';
   }
-
-  // All clients (host AND player) watch for status changes
-  const sessionRef = db.collection('sessions').doc(state.sessionId);
-  const watchUnsub = sessionRef.onSnapshot(snap => {
-    const data = snap.data();
-    if (!data) return;
-    // No index check on 'results': a briefly disconnected client can miss
-    // intermediate states and land directly on a later question's results —
-    // showResults renders whatever index the snapshot carries.
-    if (data.status === 'results') {
-      cleanup(); showResults(data);
-    } else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') {
-      cleanup(); showFinal();
-    } else if (data.status === 'question' && data.currentQuestionIndex !== qIdx) {
-      cleanup(); showQuestion(data);
-    }
-  });
-  state.unsubscribers.push(watchUnsub);
 }
 
 function startTimer(duration, startTime, qIdx) {
@@ -1482,7 +1613,7 @@ async function showResults(sessionData) {
   // Attach the navigation watcher BEFORE any awaits: if the score fetch below
   // is slow or fails, the client must still follow the host to the next state.
   // Both host AND player navigate through this watcher.
-  const unsub = sessionRef.onSnapshot(snap => {
+  const unsub = watchSession(sessionRef, snap => {
     const data = snap.data();
     if (!data) return;
     if (data.status === 'question') { flushQuestionAnalytics(); cleanup(); showQuestion(data); }
@@ -1490,7 +1621,7 @@ async function showResults(sessionData) {
     // later question's results — re-render for the new index.
     else if (data.status === 'results' && data.currentQuestionIndex !== qIdx) { flushQuestionAnalytics(); cleanup(); showResults(data); }
     else if (data.status === 'finished' || data.status === 'ended-manual' || data.status === 'ended-auto') { flushQuestionAnalytics(); cleanup(); showFinal(); }
-  });
+  }, 'results');
   state.unsubscribers.push(unsub);
 
   document.getElementById('results-q-label').textContent = `Question ${qIdx + 1} of ${questions.length}`;
@@ -1707,20 +1838,36 @@ async function init() {
   catch (e) { console.error('Firebase init failed:', e); return; }
 
   // Phones lock and tabs background mid-game, which can silently kill the
-  // Firestore stream — those players then never see the host advance. When
-  // the tab becomes visible again during an active session, bounce the
-  // network connection so every attached watcher resyncs to the latest state.
+  // Firestore stream — those players then never see the host advance. Bounce
+  // the connection so every watcher resyncs, then immediately re-read the
+  // session rather than waiting for the watchdog's next tick.
+  const resync = async reason => {
+    if (!state.sessionId) return;
+    await NetworkBounce.request(reason);
+    SessionWatchdog.tick();
+  };
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || !state.sessionId) return;
-    db.disableNetwork()
-      .then(() => db.enableNetwork())
-      .catch(e => console.warn('Firestore network bounce failed:', e));
+    if (document.visibilityState === 'visible') resync('visible');
   });
+  // iOS restores backgrounded tabs from the bfcache with a dead socket, and
+  // visibilitychange does not always fire on that path.
+  window.addEventListener('pageshow', e => { if (e.persisted) resync('bfcache'); });
+  window.addEventListener('online',   () => resync('online'));
 
-  const code = new URLSearchParams(location.search).get('code');
-  if (code) { showJoin(); return; }
-  const rejoined = await tryRejoin();
-  if (!rejoined) showHome();
+  SessionWatchdog.start();
+
+  // Rejoin before falling back to the join screen: phones discard background
+  // tabs and silently reload them, and landing on the join form mid-game left
+  // players with no way back into a game they were already in. A ?code= for a
+  // different game still wins over a stale saved session.
+  const urlCode = (new URLSearchParams(location.search).get('code') || '').toUpperCase();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('fq_session')); } catch { /* ignore */ }
+  if (!urlCode || saved?.sessionId === urlCode) {
+    if (await tryRejoin()) return;
+  }
+  if (urlCode) { showJoin(); return; }
+  showHome();
 }
 
 // ============================================================
